@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -201,6 +201,39 @@ test("persisted state survives restart and duplicate detection still works", asy
     assert.equal(reportsAfter.json.length, 2);
   } finally {
     await closeServer(secondRun.server);
+    cleanupSandbox(paths.root);
+  }
+});
+
+test("daily budget endpoints self-heal after a date rollover without waiting for another submission", async () => {
+  const paths = createSandboxPaths();
+  const { server, baseUrl } = await loadServer(paths);
+
+  try {
+    await createProgram(baseUrl);
+    const initial = await submitHighQualityReport(baseUrl);
+    assert.equal(initial.json.status, "signed");
+    assert.ok(initial.json.payout > 0);
+
+    const { default: store, saveStore } = await import("../backend/store.js");
+    store.lastResetDate = "Thu Jan 01 1970";
+    saveStore();
+
+    const bounty = await requestJson(baseUrl, "/api/bounty");
+    assert.equal(bounty.response.status, 200);
+    assert.equal(bounty.json.dailySpent, 0);
+    assert.equal(bounty.json.policy.dailyLimit, 500);
+
+    const policy = await requestJson(baseUrl, "/api/policy");
+    assert.equal(policy.response.status, 200);
+    assert.equal(policy.json.dailySpent, 0);
+    assert.equal(policy.json.dailyRemaining, 500);
+
+    const refreshedState = JSON.parse(readFileSync(paths.statePath, "utf8"));
+    assert.equal(refreshedState.dailySpent, 0);
+    assert.notEqual(refreshedState.lastResetDate, "Thu Jan 01 1970");
+  } finally {
+    await closeServer(server);
     cleanupSandbox(paths.root);
   }
 });
