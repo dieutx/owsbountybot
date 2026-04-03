@@ -26,6 +26,31 @@ function formatStatus(status) {
   return status.replace(/_/g, " ");
 }
 
+function setFormMessage(type, message) {
+  const messageEl = document.getElementById("formMessage");
+  if (!message) {
+    messageEl.hidden = true;
+    messageEl.textContent = "";
+    messageEl.className = "form-message";
+    return;
+  }
+
+  messageEl.hidden = false;
+  messageEl.textContent = message;
+  messageEl.className = `form-message ${type}`;
+}
+
+async function parseJsonResponse(res) {
+  const textBody = await res.text();
+  if (!textBody) return null;
+
+  try {
+    return JSON.parse(textBody);
+  } catch {
+    return null;
+  }
+}
+
 // Initialize program on load
 async function init() {
   try {
@@ -52,7 +77,10 @@ async function init() {
     });
     if (res.ok) {
       programInitialized = true;
-      updateStats(await res.json());
+      updateStats(await parseJsonResponse(res));
+    } else {
+      const payload = await parseJsonResponse(res);
+      setFormMessage("error", payload?.error || "Failed to initialize the demo bounty program.");
     }
   }
 
@@ -187,6 +215,7 @@ function buildFeedItem(report) {
 // Form submission
 document.getElementById("reportForm").addEventListener("submit", async (e) => {
   e.preventDefault();
+  setFormMessage(null, "");
 
   const btn = document.getElementById("submitBtn");
   btn.disabled = true;
@@ -201,21 +230,29 @@ document.getElementById("reportForm").addEventListener("submit", async (e) => {
   };
 
   try {
-    await fetch(`${API}/api/report/submit`, {
+    const res = await fetch(`${API}/api/report/submit`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data),
     });
+    const payload = await parseJsonResponse(res);
+
+    if (!res.ok) {
+      setFormMessage("error", payload?.error || payload?.reasoning || "Report submission failed.");
+      return;
+    }
+
+    setFormMessage("success", `Report submitted: ${payload?.id || "pending evaluation"}`);
+    document.getElementById("reportForm").reset();
+    document.querySelector('input[name="severity"][value="high"]').checked = true;
   } catch (err) {
     console.error("Submit error:", err);
+    setFormMessage("error", "Network error while submitting the report.");
+  } finally {
+    btn.disabled = false;
+    btn.querySelector(".btn-text").style.display = "inline";
+    btn.querySelector(".btn-loading").style.display = "none";
   }
-
-  btn.disabled = false;
-  btn.querySelector(".btn-text").style.display = "inline";
-  btn.querySelector(".btn-loading").style.display = "none";
-
-  document.getElementById("reportForm").reset();
-  document.querySelector('input[name="severity"][value="high"]').checked = true;
 });
 
 // Demo fill functions
