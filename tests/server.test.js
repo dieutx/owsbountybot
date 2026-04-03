@@ -62,9 +62,10 @@ async function requestJson(baseUrl, path, options = {}) {
   };
 }
 
-async function createProgram(baseUrl, overrides = {}) {
+async function createProgram(baseUrl, overrides = {}, requestOptions = {}) {
   return requestJson(baseUrl, "/api/bounty/create", {
     method: "POST",
+    headers: requestOptions.headers,
     body: JSON.stringify({
       name: "BountyBot Test Program",
       description: "Regression test program",
@@ -138,6 +139,7 @@ test("signed approvals are no longer reported as paid transfers", async () => {
 
 test("creating a new program resets reports, transactions, and budget counters", async () => {
   const paths = createSandboxPaths();
+  process.env.BOUNTYBOT_ADMIN_TOKEN = "reset-token";
   const { server, baseUrl } = await loadServer(paths);
 
   try {
@@ -149,6 +151,8 @@ test("creating a new program resets reports, transactions, and budget counters",
       description: "Reset state",
       maxPerBug: 75,
       dailyLimit: 120,
+    }, {
+      headers: { "x-admin-token": "reset-token" },
     });
 
     assert.equal(recreated.json.name, "Fresh Program");
@@ -165,6 +169,7 @@ test("creating a new program resets reports, transactions, and budget counters",
     assert.deepEqual(transactions.json, []);
   } finally {
     await closeServer(server);
+    delete process.env.BOUNTYBOT_ADMIN_TOKEN;
     cleanupSandbox(paths.root);
   }
 });
@@ -219,6 +224,93 @@ test("unsupported payout chains are rejected before signing", async () => {
     assert.deepEqual(transactions.json, []);
   } finally {
     await closeServer(server);
+    cleanupSandbox(paths.root);
+  }
+});
+
+test("invalid policy limits are rejected before a program is created", async () => {
+  const paths = createSandboxPaths();
+  const { server, baseUrl } = await loadServer(paths);
+
+  try {
+    const invalid = await createProgram(baseUrl, {
+      maxPerBug: -25,
+      dailyLimit: "not-a-number",
+    });
+
+    assert.equal(invalid.response.status, 400);
+    assert.match(invalid.json.error, /maxPerBug must be a positive number/);
+
+    const bounty = await requestJson(baseUrl, "/api/bounty");
+    assert.equal(bounty.response.status, 404);
+  } finally {
+    await closeServer(server);
+    cleanupSandbox(paths.root);
+  }
+});
+
+test("program reset is blocked without an admin token and preserves the existing state", async () => {
+  const paths = createSandboxPaths();
+  const { server, baseUrl } = await loadServer(paths);
+
+  try {
+    await createProgram(baseUrl);
+    const signedReport = await submitHighQualityReport(baseUrl);
+    assert.equal(signedReport.response.status, 200);
+
+    const resetAttempt = await createProgram(baseUrl, {
+      name: "Unexpected Reset",
+      maxPerBug: 50,
+      dailyLimit: 80,
+    });
+
+    assert.equal(resetAttempt.response.status, 409);
+    assert.match(resetAttempt.json.error, /BOUNTYBOT_ADMIN_TOKEN/);
+
+    const bounty = await requestJson(baseUrl, "/api/bounty");
+    assert.equal(bounty.json.name, "BountyBot Test Program");
+    assert.equal(bounty.json.reportsCount, 1);
+    assert.equal(bounty.json.totalAuthorized, signedReport.json.payout);
+  } finally {
+    await closeServer(server);
+    cleanupSandbox(paths.root);
+  }
+});
+
+test("program reset succeeds with the configured admin token", async () => {
+  const paths = createSandboxPaths();
+  process.env.BOUNTYBOT_ADMIN_TOKEN = "secret-reset-token";
+  const { server, baseUrl } = await loadServer(paths);
+
+  try {
+    await createProgram(baseUrl);
+    await submitHighQualityReport(baseUrl);
+
+    const denied = await createProgram(baseUrl, {
+      name: "Denied Reset",
+    }, {
+      headers: { "x-admin-token": "wrong-token" },
+    });
+    assert.equal(denied.response.status, 403);
+
+    const allowed = await createProgram(baseUrl, {
+      name: "Authorized Reset",
+      maxPerBug: 60,
+      dailyLimit: 90,
+    }, {
+      headers: { "x-admin-token": "secret-reset-token" },
+    });
+
+    assert.equal(allowed.response.status, 200);
+    assert.equal(allowed.json.name, "Authorized Reset");
+    assert.equal(allowed.json.policy.maxPerBug, 60);
+    assert.equal(allowed.json.policy.dailyLimit, 90);
+
+    const reports = await requestJson(baseUrl, "/api/reports");
+    assert.deepEqual(reports.json, []);
+  } finally {
+    await closeServer(server);
+    delete process.env.BOUNTYBOT_ADMIN_TOKEN;
     cleanupSandbox(paths.root);
   }
 });
