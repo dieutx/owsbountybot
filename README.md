@@ -25,6 +25,7 @@ Submit a bug report → agent evaluates quality & severity → payout approval i
 - **Persistent state** — Reports, payout approvals, counters, and duplicate history survive process restarts
 - **Policy enforcement** — App-level per-bug and daily spending limits with an explicit EVM/Solana signing allowlist
 - **Safe reconfiguration** — Existing programs cannot be reset unless `BOUNTYBOT_ADMIN_TOKEN` is configured and supplied
+- **Public-safe responses** — Dashboard APIs expose authorization IDs for auditing without leaking raw payout signatures
 - **Multi-chain wallets** — Single treasury with addresses for EVM, Solana, Bitcoin, Cosmos, and more
 - **Real-time dashboard** — Live SSE feed showing submissions, evaluations, and payout approvals
 - **Demo mode** — One-click buttons to fill high-quality and low-quality sample reports

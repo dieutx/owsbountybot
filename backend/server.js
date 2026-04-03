@@ -62,6 +62,24 @@ function getProgramStats() {
   };
 }
 
+function toPublicReport(report) {
+  if (!report || typeof report !== "object") {
+    return report;
+  }
+
+  const { signature, ...publicReport } = report;
+  return publicReport;
+}
+
+function toPublicTransaction(transaction) {
+  if (!transaction || typeof transaction !== "object") {
+    return transaction;
+  }
+
+  const { signature, ...publicTransaction } = transaction;
+  return publicTransaction;
+}
+
 export function createApp() {
   syncStore();
 
@@ -199,7 +217,7 @@ export function createApp() {
 
     store.reports.push(report);
     saveStore();
-    broadcast("report_submitted", report);
+    broadcast("report_submitted", toPublicReport(report));
 
     await sleep(EVALUATION_DELAY_MS);
 
@@ -215,8 +233,9 @@ export function createApp() {
     if (!evaluation.approved) {
       report.status = "rejected";
       saveStore();
-      broadcast("report_evaluated", report);
-      return res.json(report);
+      const publicReport = toPublicReport(report);
+      broadcast("report_evaluated", publicReport);
+      return res.json(publicReport);
     }
 
     if (evaluation.payout > store.program.policy.maxPerBug) {
@@ -228,8 +247,9 @@ export function createApp() {
       report.status = "rejected";
       report.reasoning = `POLICY DENIED: Daily spending limit of $${store.program.policy.dailyLimit} would be exceeded. Spent today: $${store.dailySpent}.`;
       saveStore();
-      broadcast("report_evaluated", report);
-      return res.json(report);
+      const publicReport = toPublicReport(report);
+      broadcast("report_evaluated", publicReport);
+      return res.json(publicReport);
     }
 
     try {
@@ -268,20 +288,23 @@ export function createApp() {
       store.transactions.push(transaction);
       saveStore();
 
-      broadcast("payout_authorized", { report, transaction });
-      return res.json(report);
+      const publicReport = toPublicReport(report);
+      const publicTransaction = toPublicTransaction(transaction);
+      broadcast("payout_authorized", { report: publicReport, transaction: publicTransaction });
+      return res.json(publicReport);
     } catch (err) {
       report.status = "approved_unsigned";
       report.payout = evaluation.payout;
       report.reasoning += ` [Signing note: ${err.message}]`;
       saveStore();
-      broadcast("report_evaluated", report);
-      return res.json(report);
+      const publicReport = toPublicReport(report);
+      broadcast("report_evaluated", publicReport);
+      return res.json(publicReport);
     }
   });
 
   app.get("/api/reports", (req, res) => {
-    res.json(store.reports.slice().reverse());
+    res.json(store.reports.slice().reverse().map(toPublicReport));
   });
 
   app.get("/api/bounty", (req, res) => {
@@ -302,7 +325,7 @@ export function createApp() {
   });
 
   app.get("/api/transactions", (req, res) => {
-    res.json(store.transactions.slice().reverse());
+    res.json(store.transactions.slice().reverse().map(toPublicTransaction));
   });
 
   app.get("/api/policy", (req, res) => {

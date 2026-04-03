@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -119,7 +119,7 @@ test("signed approvals are no longer reported as paid transfers", async () => {
     assert.equal(response.status, 200);
     assert.equal(report.status, "signed");
     assert.equal(report.txHash, null);
-    assert.ok(report.signature);
+    assert.equal(report.signature, undefined);
     assert.ok(report.authorizationId);
 
     const bounty = await requestJson(baseUrl, "/api/bounty");
@@ -132,6 +132,41 @@ test("signed approvals are no longer reported as paid transfers", async () => {
     assert.equal(transactions.json.length, 1);
     assert.equal(transactions.json[0].status, "signed");
     assert.equal(transactions.json[0].txHash, null);
+    assert.equal(transactions.json[0].signature, undefined);
+  } finally {
+    await closeServer(server);
+    cleanupSandbox(paths.root);
+  }
+});
+
+test("public APIs redact raw payout signatures while persisted state keeps them", async () => {
+  const paths = createSandboxPaths();
+  const { server, baseUrl } = await loadServer(paths);
+
+  try {
+    await createProgram(baseUrl);
+
+    const submission = await submitHighQualityReport(baseUrl);
+    assert.equal(submission.response.status, 200);
+    assert.equal(submission.json.status, "signed");
+    assert.equal(submission.json.signature, undefined);
+    assert.ok(submission.json.authorizationId);
+
+    const reports = await requestJson(baseUrl, "/api/reports");
+    assert.equal(reports.response.status, 200);
+    assert.equal(reports.json.length, 1);
+    assert.equal(reports.json[0].signature, undefined);
+    assert.ok(reports.json[0].authorizationId);
+
+    const transactions = await requestJson(baseUrl, "/api/transactions");
+    assert.equal(transactions.response.status, 200);
+    assert.equal(transactions.json.length, 1);
+    assert.equal(transactions.json[0].signature, undefined);
+    assert.ok(transactions.json[0].authorizationId);
+
+    const persisted = JSON.parse(readFileSync(paths.statePath, "utf8"));
+    assert.ok(persisted.reports[0].signature);
+    assert.ok(persisted.transactions[0].signature);
   } finally {
     await closeServer(server);
     cleanupSandbox(paths.root);
