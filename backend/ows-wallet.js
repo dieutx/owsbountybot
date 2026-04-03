@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import {
   createWallet,
   listWallets,
@@ -140,7 +141,7 @@ export function authorizePayout(walletName, chain, amount, recipientAddress) {
     status: "signed",
     signature: result.signature,
     message,
-    authorizationId: `sig_${result.signature.slice(0, 24)}`,
+    authorizationId: `auth_${crypto.randomUUID()}`,
     txHash: null,
   };
 }

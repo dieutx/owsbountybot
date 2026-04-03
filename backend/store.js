@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
+import { existsSync, mkdirSync, readFileSync, writeFile, writeFileSync } from "fs";
 import { dirname, join } from "path";
 import { fileURLToPath } from "url";
 
@@ -18,6 +18,9 @@ function createDefaultStore() {
     seenReportHashes: [],
   };
 }
+
+// In-memory Set for O(1) duplicate lookups (M-2)
+let seenHashSet = new Set();
 
 function normalizeProgram(program) {
   if (!program || typeof program !== "object") {
@@ -47,13 +50,15 @@ function loadStore(storePath = getStorePath()) {
 
   try {
     const parsed = JSON.parse(readFileSync(storePath, "utf8"));
+    const hashes = Array.isArray(parsed.seenReportHashes) ? parsed.seenReportHashes : [];
+    seenHashSet = new Set(hashes);
     return {
       program: normalizeProgram(parsed.program),
       reports: Array.isArray(parsed.reports) ? parsed.reports : [],
       transactions: Array.isArray(parsed.transactions) ? parsed.transactions : [],
       dailySpent: Number.isFinite(parsed.dailySpent) ? parsed.dailySpent : 0,
       lastResetDate: typeof parsed.lastResetDate === "string" ? parsed.lastResetDate : defaults.lastResetDate,
-      seenReportHashes: Array.isArray(parsed.seenReportHashes) ? parsed.seenReportHashes : [],
+      seenReportHashes: hashes,
     };
   } catch (err) {
     console.warn(`[store] Failed to read persisted state at ${storePath}: ${err.message}`);
@@ -74,6 +79,24 @@ const store = createDefaultStore();
 let activeStorePath = getStorePath();
 assignStoreState(loadStore(activeStorePath));
 
+// Debounced async write to avoid blocking event loop (M-3)
+let saveTimer = null;
+let savePending = false;
+
+function scheduleSave() {
+  if (saveTimer) return;
+  savePending = true;
+  saveTimer = setTimeout(() => {
+    saveTimer = null;
+    savePending = false;
+    mkdirSync(dirname(activeStorePath), { recursive: true });
+    const data = JSON.stringify(store, null, 2);
+    writeFile(activeStorePath, data, (err) => {
+      if (err) console.error("[store] Async write failed:", err.message);
+    });
+  }, 50);
+}
+
 export function syncStore() {
   const nextPath = getStorePath();
   if (nextPath !== activeStorePath) {
@@ -83,6 +106,12 @@ export function syncStore() {
 }
 
 export function saveStore() {
+  syncStore();
+  scheduleSave();
+}
+
+// Synchronous save for critical operations (program init, shutdown)
+export function saveStoreSync() {
   syncStore();
   mkdirSync(dirname(activeStorePath), { recursive: true });
   writeFileSync(activeStorePath, JSON.stringify(store, null, 2));
@@ -100,7 +129,8 @@ export function initializeProgram(program) {
   store.dailySpent = 0;
   store.lastResetDate = new Date().toDateString();
   store.seenReportHashes = [];
-  saveStore();
+  seenHashSet = new Set();
+  saveStoreSync();
 }
 
 export function resetDailyIfNeeded() {
@@ -115,12 +145,13 @@ export function resetDailyIfNeeded() {
 
 export function hasSeenReportHash(hash) {
   syncStore();
-  return store.seenReportHashes.includes(hash);
+  return seenHashSet.has(hash);
 }
 
 export function rememberReportHash(hash) {
   syncStore();
-  if (!hasSeenReportHash(hash)) {
+  if (!seenHashSet.has(hash)) {
+    seenHashSet.add(hash);
     store.seenReportHashes.push(hash);
     saveStore();
   }

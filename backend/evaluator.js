@@ -1,6 +1,8 @@
 // Bug Report Evaluator
 // Uses pattern matching + scoring heuristics for automated evaluation
 
+import crypto from "crypto";
+
 const SEVERITY_PAYOUTS = {
   critical: { min: 80, max: 150 },
   high:     { min: 40, max: 80 },
@@ -19,20 +21,16 @@ const QUALITY_SIGNALS = {
     { pattern: /authentication|authorization|privilege/i, weight: 1.5, label: "auth-related finding" },
   ],
   negative: [
-    { pattern: /maybe|might|could be|not sure/i, weight: -1, label: "uncertain language" },
-    { pattern: /test|testing|placeholder/i, weight: -2, label: "test/placeholder content" },
+    { pattern: /\bmaybe\b|\bmight\b|could be|not sure/i, weight: -1, label: "uncertain language" },
+    { pattern: /\btest\b|\btesting\b|\bplaceholder\b/i, weight: -2, label: "test/placeholder content" },
     { pattern: /^.{0,50}$/s, weight: -3, label: "too short" },
   ],
 };
 
 function hashReport(title, description) {
-  const normalized = `${title}${description}`.toLowerCase().replace(/\s+/g, '');
-  let hash = 0;
-  for (let i = 0; i < normalized.length; i++) {
-    hash = ((hash << 5) - hash) + normalized.charCodeAt(i);
-    hash |= 0;
-  }
-  return hash.toString(36);
+  // Use null byte separator to prevent title/description boundary collisions (C-3)
+  const normalized = `${title}\0${description}`.toLowerCase().replace(/\s+/g, '');
+  return crypto.createHash("sha256").update(normalized).digest("hex");
 }
 
 export function evaluateReport(report, {
@@ -60,11 +58,13 @@ export function evaluateReport(report, {
   // Step 2: Quality scoring
   let qualityScore = 5; // base score out of 10
   const detectedSignals = [];
+  let hasPositiveSignal = false;
 
   for (const signal of QUALITY_SIGNALS.positive) {
     if (signal.pattern.test(fullText)) {
       qualityScore += signal.weight;
       detectedSignals.push(`✓ ${signal.label}`);
+      hasPositiveSignal = true;
     }
   }
 
@@ -78,8 +78,8 @@ export function evaluateReport(report, {
   // Clamp score
   qualityScore = Math.max(0, Math.min(10, qualityScore));
 
-  // Step 3: Decision
-  const approved = qualityScore >= 4;
+  // Step 3: Decision — require at least one positive signal AND score >= 4 (L-3)
+  const approved = qualityScore >= 4 && hasPositiveSignal;
   const severityRange = SEVERITY_PAYOUTS[severity] || SEVERITY_PAYOUTS.low;
 
   // Payout scales with quality score
@@ -91,8 +91,13 @@ export function evaluateReport(report, {
   // Step 4: Generate reasoning
   let reasoning;
   if (!approved) {
-    reasoning = `REJECTED: Quality score ${qualityScore.toFixed(1)}/10 is below the minimum threshold of 4.0. `;
-    reasoning += `The report lacks sufficient technical detail for a valid bug bounty submission. `;
+    reasoning = `REJECTED: Quality score ${qualityScore.toFixed(1)}/10`;
+    if (!hasPositiveSignal) {
+      reasoning += ` — no positive quality signals detected.`;
+    } else {
+      reasoning += ` is below the minimum threshold of 4.0.`;
+    }
+    reasoning += ` The report lacks sufficient technical detail for a valid bug bounty submission. `;
     reasoning += `Detected issues: ${detectedSignals.filter(s => s.startsWith('✗')).join(', ') || 'insufficient detail'}.`;
   } else {
     reasoning = `APPROVED: Quality score ${qualityScore.toFixed(1)}/10. `;
