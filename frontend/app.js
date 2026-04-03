@@ -62,6 +62,11 @@ async function init() {
 // SSE for real-time updates
 function connectSSE() {
   const evtSource = new EventSource(`${API}/api/events`);
+  evtSource.addEventListener("program_created", (e) => {
+    programInitialized = true;
+    updateStats(JSON.parse(e.data));
+    loadReports();
+  });
   evtSource.addEventListener("report_submitted", (e) => {
     addFeedItem(JSON.parse(e.data));
   });
@@ -129,6 +134,8 @@ function updateFeedItem(report) {
   if (existing) {
     const newItem = buildFeedItem(report);
     existing.replaceWith(newItem);
+  } else {
+    addFeedItem(report);
   }
 }
 
