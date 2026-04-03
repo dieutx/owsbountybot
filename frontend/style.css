@@ -146,7 +146,9 @@ button[type="submit"]:disabled { opacity: 0.5; cursor: not-allowed; }
   animation: slideIn 0.3s ease;
   transition: border-color 0.3s;
 }
+.feed-item.signed { border-color: var(--green); background: var(--green-glow); }
 .feed-item.paid { border-color: var(--green); background: var(--green-glow); }
+.feed-item.approved_unsigned { border-color: var(--orange); background: rgba(255, 171, 64, 0.18); }
 .feed-item.rejected { border-color: var(--red); background: var(--red-glow); }
 .feed-item.evaluating { border-color: var(--accent); background: var(--accent-glow); }
 
@@ -159,7 +161,9 @@ button[type="submit"]:disabled { opacity: 0.5; cursor: not-allowed; }
   font-weight: 600;
   text-transform: uppercase;
 }
+.status.signed { background: var(--green); color: #000; }
 .status.paid { background: var(--green); color: #000; }
+.status.approved_unsigned { background: var(--orange); color: #000; }
 .status.rejected { background: var(--red); color: #fff; }
 .status.evaluating { background: var(--accent); color: #fff; }
 

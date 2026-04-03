@@ -1,30 +1,31 @@
 # BountyBot
 
-Automated bug bounty payout agent powered by the [Open Wallet Standard (OWS)](https://openwallet.sh).
+Automated bug bounty payout approval agent powered by the [Open Wallet Standard (OWS)](https://openwallet.sh).
 
-Submit a bug report → agent evaluates quality & severity → payout signed and sent automatically. Private keys never leave the OWS vault.
+Submit a bug report → agent evaluates quality & severity → payout approval is signed automatically. Private keys never leave the OWS vault.
 
 ![OWS](https://img.shields.io/badge/OWS-Powered-6c5ce7) ![License](https://img.shields.io/badge/License-MIT-blue)
 
 ## How It Works
 
 ```
-📝 Bug Report → 🧠 Evaluate → 🔒 Policy Check → ✍️ Sign (key never exposed) → 💰 Payout
+📝 Bug Report → 🧠 Evaluate → 🔒 Policy Check → ✍️ Sign Approval → 📦 Relay / Broadcast
 ```
 
 1. Researcher submits a bug report with severity, description, and wallet address
 2. Evaluator scores the report based on quality signals (reproduction steps, impact analysis, PoC, etc.)
-3. OWS policy engine checks spending limits before any signing occurs
-4. If approved, the payout transaction is signed inside the OWS vault — the private key is never exposed
-5. Payout is sent to the researcher's wallet
+3. The app checks per-bug and daily spending limits before any signing occurs, while OWS policies gate chain access
+4. If approved, a payout authorization is signed inside the OWS vault — the private key is never exposed
+5. A downstream relayer can broadcast the real payout transaction
 
 ## Features
 
 - **Quality scoring** — Reports are scored 0–10 based on technical signals (PoC, reproduction steps, impact, vulnerability class)
-- **Duplicate detection** — Prevents double payouts for the same finding
-- **Policy enforcement** — Per-transaction and daily spending limits via OWS policies
+- **Duplicate detection** — Prevents double payouts for the same finding, even after a restart
+- **Persistent state** — Reports, payout approvals, counters, and duplicate history survive process restarts
+- **Policy enforcement** — App-level per-bug and daily spending limits with an OWS chain guard for agent access
 - **Multi-chain wallets** — Single treasury with addresses for EVM, Solana, Bitcoin, Cosmos, and more
-- **Real-time dashboard** — Live SSE feed showing submissions, evaluations, and payouts
+- **Real-time dashboard** — Live SSE feed showing submissions, evaluations, and payout approvals
 - **Demo mode** — One-click buttons to fill high-quality and low-quality sample reports
 
 ## Quick Start
@@ -42,6 +43,9 @@ npm run setup
 
 # Start
 npm start
+
+# Test
+npm test
 ```
 
 Open **http://localhost:4000** in your browser.
@@ -54,7 +58,9 @@ Open **http://localhost:4000** in your browser.
 │   ├── evaluator.js     # Quality scoring and duplicate detection
 │   ├── ows-wallet.js    # OWS wallet, policy, and signing operations
 │   ├── setup-wallet.js  # One-time OWS setup script
-│   └── store.js         # In-memory data store
+│   └── store.js         # Persisted JSON state store
+├── tests/
+│   └── server.test.js   # Regression coverage for payout + persistence flows
 ├── frontend/
 │   ├── index.html       # Dashboard
 │   ├── app.js           # Real-time UI logic
@@ -93,8 +99,10 @@ curl -X POST http://localhost:4000/api/report/submit \
 BountyBot uses three core OWS primitives:
 
 - **`createWallet`** — Multi-chain treasury wallet (EVM, Solana, Bitcoin, Cosmos, Tron, TON, Sui, Filecoin)
-- **`createPolicy`** — Spending limits and chain allowlists enforced before signing
+- **`createPolicy`** — Chain allowlists enforced before signing
 - **`signMessage`** — Cryptographic signing inside the vault; private key is decrypted in hardened memory and wiped after use
+
+The demo currently signs payout approvals, not raw transactions. A live deployment would hand the approval to a relayer or switch to `signAndSend` with chain-specific transaction construction.
 
 The agent can approve and sign payouts but **cannot**:
 - Exceed per-transaction or daily spending limits
