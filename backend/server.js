@@ -49,6 +49,14 @@ function parsePositiveLimit(value, fieldName, fallback) {
   return Math.round(parsed * 100) / 100;
 }
 
+function getJsonObjectBody(req) {
+  if (!req.body || typeof req.body !== "object" || Array.isArray(req.body)) {
+    return null;
+  }
+
+  return req.body;
+}
+
 function getProgramStats() {
   return {
     ...store.program,
@@ -77,6 +85,13 @@ export function createApp() {
 
   app.use(cors());
   app.use(express.json());
+  app.use((err, req, res, next) => {
+    if (err instanceof SyntaxError && "body" in err) {
+      return res.status(400).json({ error: "Malformed JSON body." });
+    }
+
+    return next(err);
+  });
   app.use(express.static(join(__dirname, "../frontend")));
 
   app.get("/api/events", (req, res) => {
@@ -93,7 +108,12 @@ export function createApp() {
   });
 
   app.post("/api/bounty/create", (req, res) => {
-    const { name, description, maxPerBug, dailyLimit } = req.body;
+    const body = getJsonObjectBody(req);
+    if (!body) {
+      return res.status(400).json({ error: "Request body must be a JSON object." });
+    }
+
+    const { name, description, maxPerBug, dailyLimit } = body;
 
     let parsedMaxPerBug;
     let parsedDailyLimit;
@@ -158,7 +178,12 @@ export function createApp() {
   });
 
   app.post("/api/report/submit", async (req, res) => {
-    const { title, severity, description, reporterWallet, chain = "evm" } = req.body;
+    const body = getJsonObjectBody(req);
+    if (!body) {
+      return res.status(400).json({ error: "Request body must be a JSON object." });
+    }
+
+    const { title, severity, description, reporterWallet, chain = "evm" } = body;
 
     if (!title || !severity || !description || !reporterWallet) {
       return res.status(400).json({ error: "Missing required fields: title, severity, description, reporterWallet" });

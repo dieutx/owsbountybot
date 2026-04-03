@@ -250,6 +250,52 @@ test("invalid policy limits are rejected before a program is created", async () 
   }
 });
 
+test("missing JSON bodies are rejected with JSON 400s instead of crashing the server", async () => {
+  const paths = createSandboxPaths();
+  const { server, baseUrl } = await loadServer(paths);
+
+  try {
+    const createResponse = await fetch(`${baseUrl}/api/bounty/create`, { method: "POST" });
+    assert.equal(createResponse.status, 400);
+    assert.equal(createResponse.headers.get("content-type"), "application/json; charset=utf-8");
+    assert.deepEqual(await createResponse.json(), {
+      error: "Request body must be a JSON object.",
+    });
+
+    const submitResponse = await fetch(`${baseUrl}/api/report/submit`, { method: "POST" });
+    assert.equal(submitResponse.status, 400);
+    assert.equal(submitResponse.headers.get("content-type"), "application/json; charset=utf-8");
+    assert.deepEqual(await submitResponse.json(), {
+      error: "Request body must be a JSON object.",
+    });
+  } finally {
+    await closeServer(server);
+    cleanupSandbox(paths.root);
+  }
+});
+
+test("malformed JSON requests return JSON 400 errors", async () => {
+  const paths = createSandboxPaths();
+  const { server, baseUrl } = await loadServer(paths);
+
+  try {
+    const response = await fetch(`${baseUrl}/api/bounty/create`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "{",
+    });
+
+    assert.equal(response.status, 400);
+    assert.equal(response.headers.get("content-type"), "application/json; charset=utf-8");
+    assert.deepEqual(await response.json(), {
+      error: "Malformed JSON body.",
+    });
+  } finally {
+    await closeServer(server);
+    cleanupSandbox(paths.root);
+  }
+});
+
 test("program reset is blocked without an admin token and preserves the existing state", async () => {
   const paths = createSandboxPaths();
   const { server, baseUrl } = await loadServer(paths);
