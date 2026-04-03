@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BountyBot — Automated Bug Bounty Agent</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app">
+    <!-- Header -->
+    <header>
+      <div class="logo">
+        <span class="logo-icon">🤖</span>
+        <h1>BountyBot</h1>
+        <span class="badge">OWS-Powered</span>
+      </div>
+      <p class="tagline">Smart agent evaluates bugs & pays bounties — without touching private keys</p>
+    </header>
+
+    <!-- Stats Bar -->
+    <div class="stats-bar" id="statsBar">
+      <div class="stat">
+        <span class="stat-value" id="totalPaid">$0</span>
+        <span class="stat-label">Total Paid</span>
+      </div>
+      <div class="stat">
+        <span class="stat-value" id="reportsCount">0</span>
+        <span class="stat-label">Reports</span>
+      </div>
+      <div class="stat">
+        <span class="stat-value" id="dailyRemaining">$500</span>
+        <span class="stat-label">Daily Budget Left</span>
+      </div>
+      <div class="stat">
+        <span class="stat-value" id="walletAddr">—</span>
+        <span class="stat-label">Treasury (EVM)</span>
+      </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="main">
+      <!-- Left: Submit Form -->
+      <div class="panel submit-panel">
+        <h2>Submit Bug Report</h2>
+        <form id="reportForm">
+          <div class="field">
+            <label>Title</label>
+            <input type="text" id="bugTitle" placeholder="SQL Injection in /api/users endpoint" required>
+          </div>
+          <div class="field">
+            <label>Severity</label>
+            <div class="severity-select">
+              <label class="sev critical"><input type="radio" name="severity" value="critical"> Critical</label>
+              <label class="sev high"><input type="radio" name="severity" value="high" checked> High</label>
+              <label class="sev medium"><input type="radio" name="severity" value="medium"> Medium</label>
+              <label class="sev low"><input type="radio" name="severity" value="low"> Low</label>
+            </div>
+          </div>
+          <div class="field">
+            <label>Description</label>
+            <textarea id="bugDescription" rows="6" placeholder="Steps to reproduce, impact analysis, proof of concept..." required></textarea>
+          </div>
+          <div class="field">
+            <label>Your Wallet Address</label>
+            <input type="text" id="reporterWallet" placeholder="0x742d35Cc6634C0532925a3b844Bc9e7595f..." required>
+          </div>
+          <button type="submit" id="submitBtn">
+            <span class="btn-text">Submit Report</span>
+            <span class="btn-loading" style="display:none">Evaluating...</span>
+          </button>
+        </form>
+
+        <!-- Quick Demo Buttons -->
+        <div class="demo-buttons">
+          <p>Quick Demo:</p>
+          <button class="demo-btn good" onclick="fillGoodReport()">Fill High-Quality Bug</button>
+          <button class="demo-btn bad" onclick="fillBadReport()">Fill Low-Quality Report</button>
+        </div>
+      </div>
+
+      <!-- Right: Live Feed -->
+      <div class="panel feed-panel">
+        <h2>Live Activity Feed</h2>
+        <div id="feed" class="feed">
+          <div class="feed-empty">
+            <p>No reports yet. Submit a bug to see the agent in action!</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- OWS Info Banner -->
+    <div class="ows-banner">
+      <div class="ows-flow">
+        <span class="flow-step">📝 Bug Report</span>
+        <span class="flow-arrow">→</span>
+        <span class="flow-step">🧠 Agent Evaluates</span>
+        <span class="flow-arrow">→</span>
+        <span class="flow-step">🔒 OWS Policy Check</span>
+        <span class="flow-arrow">→</span>
+        <span class="flow-step">✍️ Sign (key never exposed)</span>
+        <span class="flow-arrow">→</span>
+        <span class="flow-step">💰 Payout Sent</span>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
