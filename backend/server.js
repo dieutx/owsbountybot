@@ -34,6 +34,22 @@ function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+function normalizeRequiredString(value) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function isValidRecipient(chain, address) {
+  if (chain === "evm") {
+    return /^0x[a-fA-F0-9]{40}$/.test(address);
+  }
+
+  if (chain === "solana") {
+    return /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(address);
+  }
+
+  return false;
+}
+
 function getProgramStats() {
   return {
     ...store.program,
@@ -118,8 +134,11 @@ export function createApp() {
 
   app.post("/api/report/submit", async (req, res) => {
     const { title, severity, description, reporterWallet, chain = "evm" } = req.body;
+    const normalizedTitle = normalizeRequiredString(title);
+    const normalizedDescription = normalizeRequiredString(description);
+    const normalizedReporterWallet = normalizeRequiredString(reporterWallet);
 
-    if (!title || !severity || !description || !reporterWallet) {
+    if (!normalizedTitle || !severity || !normalizedDescription || !normalizedReporterWallet) {
       return res.status(400).json({ error: "Missing required fields: title, severity, description, reporterWallet" });
     }
 
@@ -138,14 +157,20 @@ export function createApp() {
       });
     }
 
+    if (!isValidRecipient(normalizedChain, normalizedReporterWallet)) {
+      return res.status(400).json({
+        error: `reporterWallet must be a valid ${normalizedChain} address`,
+      });
+    }
+
     resetDailyIfNeeded();
 
     const report = {
       id: buildId("RPT"),
-      title,
+      title: normalizedTitle,
       severity,
-      description,
-      reporterWallet,
+      description: normalizedDescription,
+      reporterWallet: normalizedReporterWallet,
       chain: normalizedChain,
       status: "evaluating",
       payout: 0,
@@ -163,7 +188,7 @@ export function createApp() {
     await sleep(EVALUATION_DELAY_MS);
 
     const evaluation = evaluateReport(
-      { title, severity, description },
+      { title: normalizedTitle, severity, description: normalizedDescription },
       { hasSeenHash: hasSeenReportHash, rememberHash: rememberReportHash },
     );
 
@@ -196,7 +221,7 @@ export function createApp() {
         "bountybot-treasury",
         normalizedChain,
         evaluation.payout,
-        reporterWallet,
+        normalizedReporterWallet,
       );
 
       report.status = payoutResult.status;
@@ -215,7 +240,7 @@ export function createApp() {
         id: buildId("TX"),
         reportId: report.id,
         amount: evaluation.payout,
-        to: reporterWallet,
+        to: normalizedReporterWallet,
         status: payoutResult.status,
         txHash: payoutResult.txHash,
         signature: payoutResult.signature,

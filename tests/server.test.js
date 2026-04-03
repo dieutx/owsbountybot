@@ -222,3 +222,54 @@ test("unsupported payout chains are rejected before signing", async () => {
     cleanupSandbox(paths.root);
   }
 });
+
+test("invalid evm reporter addresses are rejected before signing", async () => {
+  const paths = createSandboxPaths();
+  const { server, baseUrl } = await loadServer(paths);
+
+  try {
+    await createProgram(baseUrl);
+
+    const { response, json } = await submitHighQualityReport(baseUrl, {
+      reporterWallet: "not-an-address",
+    });
+
+    assert.equal(response.status, 400);
+    assert.match(json.error, /valid evm address/);
+
+    const reports = await requestJson(baseUrl, "/api/reports");
+    const transactions = await requestJson(baseUrl, "/api/transactions");
+    assert.deepEqual(reports.json, []);
+    assert.deepEqual(transactions.json, []);
+  } finally {
+    await closeServer(server);
+    cleanupSandbox(paths.root);
+  }
+});
+
+test("solana payouts require a valid base58 recipient address", async () => {
+  const paths = createSandboxPaths();
+  const { server, baseUrl } = await loadServer(paths);
+
+  try {
+    await createProgram(baseUrl);
+
+    const bad = await submitHighQualityReport(baseUrl, {
+      chain: "solana",
+      reporterWallet: "0x742d35Cc6634C0532925a3b844Bc9e7595f2bD38",
+    });
+    assert.equal(bad.response.status, 400);
+    assert.match(bad.json.error, /valid solana address/);
+
+    const good = await submitHighQualityReport(baseUrl, {
+      chain: "solana",
+      reporterWallet: "So11111111111111111111111111111111111111112",
+    });
+    assert.equal(good.response.status, 200);
+    assert.equal(good.json.chain, "solana");
+    assert.equal(good.json.status, "signed");
+  } finally {
+    await closeServer(server);
+    cleanupSandbox(paths.root);
+  }
+});

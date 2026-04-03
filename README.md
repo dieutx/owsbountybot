@@ -106,6 +106,8 @@ The demo currently signs payout approvals, not raw transactions. A live deployme
 
 For the current SDK flow, the server mirrors the chain allowlist in request validation and only accepts `evm` and `solana` payout chains.
 
+Recipient addresses are also validated against the selected payout chain before any signing occurs.
+
 The agent can approve and sign payouts but **cannot**:
 - Exceed per-transaction or daily spending limits
 - Sign on unauthorized chains
