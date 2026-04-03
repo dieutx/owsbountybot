@@ -46,7 +46,12 @@ function parsePositiveLimit(value, fieldName, fallback) {
     throw new Error(`${fieldName} must be a positive number`);
   }
 
-  return Math.round(parsed * 100) / 100;
+  const rounded = Math.round(parsed * 100) / 100;
+  if (rounded <= 0) {
+    throw new Error(`${fieldName} must be at least 0.01`);
+  }
+
+  return rounded;
 }
 
 function getProgramStats() {

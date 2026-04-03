@@ -250,6 +250,27 @@ test("invalid policy limits are rejected before a program is created", async () 
   }
 });
 
+test("sub-cent policy limits are rejected before rounding them down to zero", async () => {
+  const paths = createSandboxPaths();
+  const { server, baseUrl } = await loadServer(paths);
+
+  try {
+    const invalid = await createProgram(baseUrl, {
+      maxPerBug: 0.001,
+      dailyLimit: 0.009,
+    });
+
+    assert.equal(invalid.response.status, 400);
+    assert.match(invalid.json.error, /must be at least 0.01/);
+
+    const bounty = await requestJson(baseUrl, "/api/bounty");
+    assert.equal(bounty.response.status, 404);
+  } finally {
+    await closeServer(server);
+    cleanupSandbox(paths.root);
+  }
+});
+
 test("program reset is blocked without an admin token and preserves the existing state", async () => {
   const paths = createSandboxPaths();
   const { server, baseUrl } = await loadServer(paths);
