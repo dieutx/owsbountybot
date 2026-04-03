@@ -50,6 +50,7 @@ function parsePositiveLimit(value, fieldName, fallback) {
 }
 
 function getProgramStats() {
+  resetDailyIfNeeded();
   return {
     ...store.program,
     totalAuthorized: store.program?.totalAuthorized || 0,
@@ -310,6 +311,7 @@ export function createApp() {
       return res.status(404).json({ error: "No program" });
     }
 
+    resetDailyIfNeeded();
     res.json({
       ...store.program.policy,
       dailySpent: store.dailySpent,
