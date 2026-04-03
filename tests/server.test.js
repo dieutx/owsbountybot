@@ -222,3 +222,33 @@ test("unsupported payout chains are rejected before signing", async () => {
     cleanupSandbox(paths.root);
   }
 });
+
+test("report and transaction ids stay unique even when Date.now collides", async () => {
+  const paths = createSandboxPaths();
+  const { server, baseUrl } = await loadServer(paths);
+  const originalDateNow = Date.now;
+  Date.now = () => 1_700_000_000_000;
+
+  try {
+    await createProgram(baseUrl);
+
+    const first = await submitHighQualityReport(baseUrl, {
+      title: "SQL Injection in /api/users search endpoint alpha",
+    });
+    const second = await submitHighQualityReport(baseUrl, {
+      title: "SQL Injection in /api/users search endpoint beta",
+    });
+
+    assert.equal(first.response.status, 200);
+    assert.equal(second.response.status, 200);
+    assert.notEqual(first.json.id, second.json.id);
+
+    const transactions = await requestJson(baseUrl, "/api/transactions");
+    assert.equal(transactions.json.length, 2);
+    assert.notEqual(transactions.json[0].id, transactions.json[1].id);
+  } finally {
+    Date.now = originalDateNow;
+    await closeServer(server);
+    cleanupSandbox(paths.root);
+  }
+});

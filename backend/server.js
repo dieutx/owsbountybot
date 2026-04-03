@@ -1,5 +1,6 @@
 import express from "express";
 import cors from "cors";
+import { randomUUID } from "crypto";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
 import store, {
@@ -27,7 +28,7 @@ const EVALUATION_DELAY_MS = Number(process.env.BOUNTYBOT_EVALUATION_DELAY_MS || 
 const VALID_SEVERITIES = new Set(["critical", "high", "medium", "low"]);
 
 function buildId(prefix) {
-  return `${prefix}-${Date.now().toString(36).toUpperCase()}`;
+  return `${prefix}-${Date.now().toString(36).toUpperCase()}-${randomUUID().slice(0, 8).toUpperCase()}`;
 }
 
 function sleep(ms) {
