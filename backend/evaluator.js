@@ -25,7 +25,7 @@ const QUALITY_SIGNALS = {
   ],
 };
 
-function hashReport(title, description) {
+export function hashReport(title, description) {
   const normalized = `${title}${description}`.toLowerCase().replace(/\s+/g, '');
   let hash = 0;
   for (let i = 0; i < normalized.length; i++) {
@@ -35,29 +35,11 @@ function hashReport(title, description) {
   return hash.toString(36);
 }
 
-export function evaluateReport(report, {
-  hasSeenHash = () => false,
-  rememberHash = () => {},
-} = {}) {
+export function evaluateReport(report) {
   const { title, severity, description } = report;
   const fullText = `${title} ${description}`;
 
-  // Step 1: Duplicate check
-  const reportHash = hashReport(title, description);
-  if (hasSeenHash(reportHash)) {
-    return {
-      approved: false,
-      payout: 0,
-      severity,
-      qualityScore: 0,
-      reasoning: "DUPLICATE: This report matches a previously submitted finding. Duplicate reports are not eligible for bounty payouts.",
-      signals: ["duplicate detection triggered"],
-      evaluationTime: Date.now(),
-    };
-  }
-  rememberHash(reportHash);
-
-  // Step 2: Quality scoring
+  // Step 1: Quality scoring
   let qualityScore = 5; // base score out of 10
   const detectedSignals = [];
 
@@ -78,7 +60,7 @@ export function evaluateReport(report, {
   // Clamp score
   qualityScore = Math.max(0, Math.min(10, qualityScore));
 
-  // Step 3: Decision
+  // Step 2: Decision
   const approved = qualityScore >= 4;
   const severityRange = SEVERITY_PAYOUTS[severity] || SEVERITY_PAYOUTS.low;
 
@@ -88,7 +70,7 @@ export function evaluateReport(report, {
     ? Math.round(severityRange.min + (severityRange.max - severityRange.min) * payoutMultiplier)
     : 0;
 
-  // Step 4: Generate reasoning
+  // Step 3: Generate reasoning
   let reasoning;
   if (!approved) {
     reasoning = `REJECTED: Quality score ${qualityScore.toFixed(1)}/10 is below the minimum threshold of 4.0. `;

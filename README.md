@@ -21,7 +21,7 @@ Submit a bug report → agent evaluates quality & severity → payout approval i
 ## Features
 
 - **Quality scoring** — Reports are scored 0–10 based on technical signals (PoC, reproduction steps, impact, vulnerability class)
-- **Duplicate detection** — Prevents double payouts for the same finding, even after a restart
+- **Duplicate detection** — Prevents double payouts for the same finding, even after a restart, without poisoning budget-denied retries
 - **Persistent state** — Reports, payout approvals, counters, and duplicate history survive process restarts
 - **Policy enforcement** — App-level per-bug and daily spending limits with an explicit EVM/Solana signing allowlist
 - **Multi-chain wallets** — Single treasury with addresses for EVM, Solana, Bitcoin, Cosmos, and more

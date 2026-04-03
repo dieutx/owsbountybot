@@ -222,3 +222,34 @@ test("unsupported payout chains are rejected before signing", async () => {
     cleanupSandbox(paths.root);
   }
 });
+
+test("policy-denied reports can be resubmitted without being poisoned as duplicates", async () => {
+  const paths = createSandboxPaths();
+  const { server, baseUrl } = await loadServer(paths);
+
+  try {
+    await createProgram(baseUrl, {
+      maxPerBug: 150,
+      dailyLimit: 50,
+    });
+
+    const first = await submitHighQualityReport(baseUrl);
+    assert.equal(first.response.status, 200);
+    assert.equal(first.json.status, "rejected");
+    assert.match(first.json.reasoning, /POLICY DENIED/);
+
+    const second = await submitHighQualityReport(baseUrl);
+    assert.equal(second.response.status, 200);
+    assert.equal(second.json.status, "rejected");
+    assert.match(second.json.reasoning, /POLICY DENIED/);
+    assert.doesNotMatch(second.json.reasoning, /DUPLICATE/);
+
+    const reports = await requestJson(baseUrl, "/api/reports");
+    assert.equal(reports.json.length, 2);
+    assert.match(reports.json[0].reasoning, /POLICY DENIED/);
+    assert.match(reports.json[1].reasoning, /POLICY DENIED/);
+  } finally {
+    await closeServer(server);
+    cleanupSandbox(paths.root);
+  }
+});

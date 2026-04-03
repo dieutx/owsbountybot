@@ -10,7 +10,7 @@ import store, {
   saveStore,
   syncStore,
 } from "./store.js";
-import { evaluateReport } from "./evaluator.js";
+import { evaluateReport, hashReport } from "./evaluator.js";
 import {
   ALLOWED_SIGNING_CHAINS,
   normalizeChain,
@@ -25,6 +25,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_PORT = Number(process.env.PORT || 4000);
 const EVALUATION_DELAY_MS = Number(process.env.BOUNTYBOT_EVALUATION_DELAY_MS || 1500);
 const VALID_SEVERITIES = new Set(["critical", "high", "medium", "low"]);
+const pendingReportHashes = new Set();
 
 function buildId(prefix) {
   return `${prefix}-${Date.now().toString(36).toUpperCase()}`;
@@ -32,6 +33,26 @@ function buildId(prefix) {
 
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function buildDuplicateReport({ title, severity, description, reporterWallet, chain }) {
+  return {
+    id: buildId("RPT"),
+    title,
+    severity,
+    description,
+    reporterWallet,
+    chain,
+    status: "rejected",
+    payout: 0,
+    reasoning: "DUPLICATE: This report matches a previously submitted finding. Duplicate reports are not eligible for bounty payouts.",
+    qualityScore: 0,
+    signals: ["duplicate detection triggered"],
+    txHash: null,
+    signature: null,
+    authorizationId: null,
+    createdAt: new Date().toISOString(),
+  };
 }
 
 function getProgramStats() {
@@ -140,6 +161,24 @@ export function createApp() {
 
     resetDailyIfNeeded();
 
+    const reportHash = hashReport(title, description);
+    if (pendingReportHashes.has(reportHash) || hasSeenReportHash(reportHash)) {
+      const duplicateReport = buildDuplicateReport({
+        title,
+        severity,
+        description,
+        reporterWallet,
+        chain: normalizedChain,
+      });
+      store.reports.push(duplicateReport);
+      saveStore();
+      broadcast("report_submitted", duplicateReport);
+      broadcast("report_evaluated", duplicateReport);
+      return res.json(duplicateReport);
+    }
+
+    pendingReportHashes.add(reportHash);
+
     const report = {
       id: buildId("RPT"),
       title,
@@ -162,10 +201,7 @@ export function createApp() {
 
     await sleep(EVALUATION_DELAY_MS);
 
-    const evaluation = evaluateReport(
-      { title, severity, description },
-      { hasSeenHash: hasSeenReportHash, rememberHash: rememberReportHash },
-    );
+    const evaluation = evaluateReport({ title, severity, description });
 
     report.qualityScore = evaluation.qualityScore;
     report.signals = evaluation.signals;
@@ -173,6 +209,8 @@ export function createApp() {
 
     if (!evaluation.approved) {
       report.status = "rejected";
+      rememberReportHash(reportHash);
+      pendingReportHashes.delete(reportHash);
       saveStore();
       broadcast("report_evaluated", report);
       return res.json(report);
@@ -186,6 +224,7 @@ export function createApp() {
     if (store.dailySpent + evaluation.payout > store.program.policy.dailyLimit) {
       report.status = "rejected";
       report.reasoning = `POLICY DENIED: Daily spending limit of $${store.program.policy.dailyLimit} would be exceeded. Spent today: $${store.dailySpent}.`;
+      pendingReportHashes.delete(reportHash);
       saveStore();
       broadcast("report_evaluated", report);
       return res.json(report);
@@ -225,6 +264,8 @@ export function createApp() {
       };
 
       store.transactions.push(transaction);
+      rememberReportHash(reportHash);
+      pendingReportHashes.delete(reportHash);
       saveStore();
 
       broadcast("payout_authorized", { report, transaction });
@@ -233,6 +274,7 @@ export function createApp() {
       report.status = "approved_unsigned";
       report.payout = evaluation.payout;
       report.reasoning += ` [Signing note: ${err.message}]`;
+      pendingReportHashes.delete(reportHash);
       saveStore();
       broadcast("report_evaluated", report);
       return res.json(report);
