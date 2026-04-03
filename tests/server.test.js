@@ -198,3 +198,27 @@ test("persisted state survives restart and duplicate detection still works", asy
     cleanupSandbox(paths.root);
   }
 });
+
+test("unsupported payout chains are rejected before signing", async () => {
+  const paths = createSandboxPaths();
+  const { server, baseUrl } = await loadServer(paths);
+
+  try {
+    await createProgram(baseUrl);
+
+    const { response, json } = await submitHighQualityReport(baseUrl, {
+      chain: "bitcoin",
+    });
+
+    assert.equal(response.status, 400);
+    assert.match(json.error, /Allowed chains: evm, solana/);
+
+    const reports = await requestJson(baseUrl, "/api/reports");
+    const transactions = await requestJson(baseUrl, "/api/transactions");
+    assert.deepEqual(reports.json, []);
+    assert.deepEqual(transactions.json, []);
+  } finally {
+    await closeServer(server);
+    cleanupSandbox(paths.root);
+  }
+});

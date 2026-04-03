@@ -12,6 +12,8 @@ import store, {
 } from "./store.js";
 import { evaluateReport } from "./evaluator.js";
 import {
+  ALLOWED_SIGNING_CHAINS,
+  normalizeChain,
   setupTreasuryWallet,
   setupPolicy,
   setupAgentKey,
@@ -101,6 +103,8 @@ export function createApp() {
         id: policy.id,
         maxPerBug,
         dailyLimit,
+        allowedChains: Object.keys(ALLOWED_SIGNING_CHAINS),
+        allowedChainIds: Object.values(ALLOWED_SIGNING_CHAINS),
       },
       agentKeyId: agentKey.id,
       totalAuthorized: 0,
@@ -127,6 +131,13 @@ export function createApp() {
       return res.status(400).json({ error: "No bounty program initialized. POST /api/bounty/create first." });
     }
 
+    const normalizedChain = normalizeChain(chain);
+    if (!normalizedChain) {
+      return res.status(400).json({
+        error: `Unsupported payout chain. Allowed chains: ${Object.keys(ALLOWED_SIGNING_CHAINS).join(", ")}`,
+      });
+    }
+
     resetDailyIfNeeded();
 
     const report = {
@@ -135,7 +146,7 @@ export function createApp() {
       severity,
       description,
       reporterWallet,
-      chain,
+      chain: normalizedChain,
       status: "evaluating",
       payout: 0,
       reasoning: "",
@@ -183,7 +194,7 @@ export function createApp() {
     try {
       const payoutResult = authorizePayout(
         "bountybot-treasury",
-        chain,
+        normalizedChain,
         evaluation.payout,
         reporterWallet,
       );
@@ -209,7 +220,7 @@ export function createApp() {
         txHash: payoutResult.txHash,
         signature: payoutResult.signature,
         authorizationId: payoutResult.authorizationId,
-        chain,
+        chain: normalizedChain,
         timestamp: new Date().toISOString(),
       };
 

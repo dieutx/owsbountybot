@@ -23,7 +23,7 @@ Submit a bug report → agent evaluates quality & severity → payout approval i
 - **Quality scoring** — Reports are scored 0–10 based on technical signals (PoC, reproduction steps, impact, vulnerability class)
 - **Duplicate detection** — Prevents double payouts for the same finding, even after a restart
 - **Persistent state** — Reports, payout approvals, counters, and duplicate history survive process restarts
-- **Policy enforcement** — App-level per-bug and daily spending limits with an OWS chain guard for agent access
+- **Policy enforcement** — App-level per-bug and daily spending limits with an explicit EVM/Solana signing allowlist
 - **Multi-chain wallets** — Single treasury with addresses for EVM, Solana, Bitcoin, Cosmos, and more
 - **Real-time dashboard** — Live SSE feed showing submissions, evaluations, and payout approvals
 - **Demo mode** — One-click buttons to fill high-quality and low-quality sample reports
@@ -103,6 +103,8 @@ BountyBot uses three core OWS primitives:
 - **`signMessage`** — Cryptographic signing inside the vault; private key is decrypted in hardened memory and wiped after use
 
 The demo currently signs payout approvals, not raw transactions. A live deployment would hand the approval to a relayer or switch to `signAndSend` with chain-specific transaction construction.
+
+For the current SDK flow, the server mirrors the chain allowlist in request validation and only accepts `evm` and `solana` payout chains.
 
 The agent can approve and sign payouts but **cannot**:
 - Exceed per-transaction or daily spending limits

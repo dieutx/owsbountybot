@@ -9,12 +9,34 @@ import {
   listApiKeys,
 } from "@open-wallet-standard/core";
 
+export const ALLOWED_SIGNING_CHAINS = Object.freeze({
+  evm: "eip155:1",
+  solana: "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+});
+
 function getVaultPath() {
   return process.env.OWS_VAULT_PATH || undefined;
 }
 
 function buildPolicyId(maxPerTx, dailyLimit) {
   return `bountybot-chain-guard-${maxPerTx}-${dailyLimit}`;
+}
+
+export function normalizeChain(chain) {
+  if (typeof chain !== "string") {
+    return null;
+  }
+
+  const normalized = chain.trim().toLowerCase();
+  const aliasMap = {
+    evm: "evm",
+    "eip155:1": "evm",
+    ethereum: "evm",
+    solana: "solana",
+    [ALLOWED_SIGNING_CHAINS.solana.toLowerCase()]: "solana",
+  };
+
+  return aliasMap[normalized] || null;
 }
 
 // Create or get the bounty treasury wallet
@@ -59,9 +81,10 @@ export function setupPolicy(maxPerTx = 150, dailyLimit = 500) {
     metadata: {
       appEnforcedMaxPerBug: maxPerTx,
       appEnforcedDailyLimit: dailyLimit,
+      allowedSigningChains: Object.keys(ALLOWED_SIGNING_CHAINS),
     },
     rules: [
-      { type: "allowed_chains", chain_ids: ["eip155:1", "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"] },
+      { type: "allowed_chains", chain_ids: Object.values(ALLOWED_SIGNING_CHAINS) },
     ],
   };
 
