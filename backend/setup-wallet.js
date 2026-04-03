@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Setup script: creates OWS wallet and policy for BountyBot
+// Setup script: creates an OWS wallet and chain-guard policy for BountyBot
 import { setupTreasuryWallet, setupPolicy, setupAgentKey } from "./ows-wallet.js";
 
 console.log("=== BountyBot OWS Setup ===\n");
@@ -13,7 +13,7 @@ for (const acc of wallet.accounts) {
 
 // Step 2: Create policy
 const policy = setupPolicy(150, 500);
-console.log(`\nPolicy: max $150/bug, $500/day`);
+console.log(`\nPolicy: chain guard + app caps ($150/bug, $500/day)`);
 
 // Step 3: Create agent API key
 try {

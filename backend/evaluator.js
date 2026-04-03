@@ -25,9 +25,6 @@ const QUALITY_SIGNALS = {
   ],
 };
 
-// Previously seen reports (simple duplicate detection)
-const seenHashes = new Set();
-
 function hashReport(title, description) {
   const normalized = `${title}${description}`.toLowerCase().replace(/\s+/g, '');
   let hash = 0;
@@ -38,13 +35,16 @@ function hashReport(title, description) {
   return hash.toString(36);
 }
 
-export function evaluateReport(report) {
+export function evaluateReport(report, {
+  hasSeenHash = () => false,
+  rememberHash = () => {},
+} = {}) {
   const { title, severity, description } = report;
   const fullText = `${title} ${description}`;
 
   // Step 1: Duplicate check
   const reportHash = hashReport(title, description);
-  if (seenHashes.has(reportHash)) {
+  if (hasSeenHash(reportHash)) {
     return {
       approved: false,
       payout: 0,
@@ -55,7 +55,7 @@ export function evaluateReport(report) {
       evaluationTime: Date.now(),
     };
   }
-  seenHashes.add(reportHash);
+  rememberHash(reportHash);
 
   // Step 2: Quality scoring
   let qualityScore = 5; // base score out of 10

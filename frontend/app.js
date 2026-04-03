@@ -22,6 +22,10 @@ function el(tag, attrs = {}, children = []) {
 
 function text(str) { return document.createTextNode(str); }
 
+function formatStatus(status) {
+  return status.replace(/_/g, " ");
+}
+
 // Initialize program on load
 async function init() {
   try {
@@ -65,15 +69,17 @@ function connectSSE() {
     updateFeedItem(JSON.parse(e.data));
     refreshStats();
   });
-  evtSource.addEventListener("payout_sent", (e) => {
+  const payoutHandler = (e) => {
     const { report } = JSON.parse(e.data);
     updateFeedItem(report);
     refreshStats();
-  });
+  };
+  evtSource.addEventListener("payout_authorized", payoutHandler);
+  evtSource.addEventListener("payout_sent", payoutHandler);
 }
 
 function updateStats(data) {
-  document.getElementById("totalPaid").textContent = `$${data.totalPaid || 0}`;
+  document.getElementById("totalAuthorized").textContent = `$${data.totalAuthorized ?? data.totalPaid ?? 0}`;
   document.getElementById("reportsCount").textContent = data.reportsCount || 0;
   document.getElementById("dailyRemaining").textContent = `$${(data.policy?.dailyLimit || 500) - (data.dailySpent || 0)}`;
 
@@ -137,7 +143,7 @@ function buildFeedItem(report) {
   // Header row
   const header = el("div", { className: "header" }, [
     el("span", { className: "title", textContent: report.title }),
-    el("span", { className: `status ${report.status}`, textContent: report.status }),
+    el("span", { className: `status ${report.status}`, textContent: formatStatus(report.status) }),
   ]);
   item.appendChild(header);
 
@@ -164,11 +170,13 @@ function buildFeedItem(report) {
   }
 
   // Payout info
-  if (report.status === "paid") {
-    const txText = report.txHash ? report.txHash.slice(0, 20) + "..." : "pending";
+  if (report.status === "signed" || report.status === "paid") {
+    const referenceLabel = report.txHash ? "Tx" : "Authorization";
+    const referenceValue = report.txHash || report.authorizationId || report.signature || "pending";
+    const referenceText = referenceValue.length > 20 ? referenceValue.slice(0, 20) + "..." : referenceValue;
     const payoutInfo = el("div", { className: "payout-info" }, [
       el("span", { className: "payout-amount", textContent: `$${report.payout} USDC` }),
-      el("span", { className: "tx-hash", textContent: `Tx: ${txText}` }),
+      el("span", { className: "tx-hash", textContent: `${referenceLabel}: ${referenceText}` }),
     ]);
     item.appendChild(payoutInfo);
   }

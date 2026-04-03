@@ -15,14 +15,14 @@
         <h1>BountyBot</h1>
         <span class="badge">OWS-Powered</span>
       </div>
-      <p class="tagline">Smart agent evaluates bugs & pays bounties — without touching private keys</p>
+      <p class="tagline">Smart agent evaluates bugs & signs payout approvals — without touching private keys</p>
     </header>
 
     <!-- Stats Bar -->
     <div class="stats-bar" id="statsBar">
       <div class="stat">
-        <span class="stat-value" id="totalPaid">$0</span>
-        <span class="stat-label">Total Paid</span>
+        <span class="stat-value" id="totalAuthorized">$0</span>
+        <span class="stat-label">Total Authorized</span>
       </div>
       <div class="stat">
         <span class="stat-value" id="reportsCount">0</span>
@@ -99,9 +99,9 @@
         <span class="flow-arrow">→</span>
         <span class="flow-step">🔒 OWS Policy Check</span>
         <span class="flow-arrow">→</span>
-        <span class="flow-step">✍️ Sign (key never exposed)</span>
+        <span class="flow-step">✍️ Sign Approval</span>
         <span class="flow-arrow">→</span>
-        <span class="flow-step">💰 Payout Sent</span>
+        <span class="flow-step">📦 Relay / Broadcast</span>
       </div>
     </div>
   </div>
