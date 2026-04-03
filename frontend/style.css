@@ -34,6 +34,19 @@ header { text-align: center; padding: 32px 0 24px; }
 .logo h1 { font-size: 32px; font-weight: 700; background: linear-gradient(135deg, #6c5ce7, #a29bfe); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
 .badge { background: var(--accent); color: white; padding: 4px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; letter-spacing: 0.5px; }
 .tagline { color: var(--text-dim); margin-top: 8px; font-size: 14px; }
+.github-link {
+  display: inline-block;
+  margin-top: 10px;
+  padding: 6px 16px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-dim);
+  font-family: inherit;
+  font-size: 12px;
+  text-decoration: none;
+  transition: all 0.2s;
+}
+.github-link:hover { border-color: var(--accent); color: var(--accent); }
 
 /* Stats Bar */
 .stats-bar {
