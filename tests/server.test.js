@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import { listApiKeys } from "@open-wallet-standard/core";
 
 function createSandboxPaths() {
   const root = mkdtempSync(join(tmpdir(), "owsbountybot-"));
@@ -283,7 +284,8 @@ test("program reset succeeds with the configured admin token", async () => {
   const { server, baseUrl } = await loadServer(paths);
 
   try {
-    await createProgram(baseUrl);
+    const original = await createProgram(baseUrl);
+    const originalAgentKeyId = original.json.agentKeyId;
     await submitHighQualityReport(baseUrl);
 
     const denied = await createProgram(baseUrl, {
@@ -305,9 +307,17 @@ test("program reset succeeds with the configured admin token", async () => {
     assert.equal(allowed.json.name, "Authorized Reset");
     assert.equal(allowed.json.policy.maxPerBug, 60);
     assert.equal(allowed.json.policy.dailyLimit, 90);
+    assert.notEqual(allowed.json.agentKeyId, originalAgentKeyId);
 
     const reports = await requestJson(baseUrl, "/api/reports");
     assert.deepEqual(reports.json, []);
+
+    const apiKeys = listApiKeys(paths.vaultPath);
+    assert.equal(apiKeys.length, 2);
+    assert.deepEqual(
+      apiKeys.map(key => key.policy_ids[0]).sort(),
+      ["bountybot-chain-guard-150-500", "bountybot-chain-guard-60-90"],
+    );
   } finally {
     await closeServer(server);
     delete process.env.BOUNTYBOT_ADMIN_TOKEN;

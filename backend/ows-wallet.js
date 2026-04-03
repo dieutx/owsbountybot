@@ -98,16 +98,21 @@ export function setupAgentKey(walletId, policyId) {
   const vaultPath = getVaultPath();
   try {
     const existing = listApiKeys(vaultPath);
-    if (existing.length > 0) {
-      console.log(`[OWS] Agent key already exists`);
-      return { token: "***existing***", id: existing[0].id, name: existing[0].name };
+    const matchingKey = existing.find((key) => (
+      key.wallet_ids?.includes(walletId) &&
+      key.policy_ids?.includes(policyId)
+    ));
+
+    if (matchingKey) {
+      console.log(`[OWS] Agent key already exists for wallet/policy`);
+      return { token: "***existing***", id: matchingKey.id, name: matchingKey.name };
     }
   } catch {
     // no keys yet
   }
 
   const key = createApiKey(
-    "bountybot-agent",
+    `bountybot-agent-${policyId}`,
     [walletId],
     [policyId],
     "", // no passphrase for demo
