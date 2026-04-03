@@ -34,6 +34,21 @@ function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+function getAdminToken() {
+  return process.env.BOUNTYBOT_ADMIN_TOKEN?.trim() || "";
+}
+
+function parsePositiveLimit(value, fieldName, fallback) {
+  const rawValue = value ?? fallback;
+  const parsed = Number(rawValue);
+
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    throw new Error(`${fieldName} must be a positive number`);
+  }
+
+  return Math.round(parsed * 100) / 100;
+}
+
 function getProgramStats() {
   return {
     ...store.program,
@@ -78,10 +93,36 @@ export function createApp() {
   });
 
   app.post("/api/bounty/create", (req, res) => {
-    const { name, description, maxPerBug = 150, dailyLimit = 500 } = req.body;
+    const { name, description, maxPerBug, dailyLimit } = req.body;
+
+    let parsedMaxPerBug;
+    let parsedDailyLimit;
+    try {
+      parsedMaxPerBug = parsePositiveLimit(maxPerBug, "maxPerBug", 150);
+      parsedDailyLimit = parsePositiveLimit(dailyLimit, "dailyLimit", 500);
+    } catch (err) {
+      return res.status(400).json({ error: err.message });
+    }
+
+    if (parsedDailyLimit < parsedMaxPerBug) {
+      return res.status(400).json({ error: "dailyLimit must be greater than or equal to maxPerBug" });
+    }
+
+    if (store.program) {
+      const adminToken = getAdminToken();
+      if (!adminToken) {
+        return res.status(409).json({
+          error: "A bounty program already exists. Configure BOUNTYBOT_ADMIN_TOKEN to allow authenticated resets.",
+        });
+      }
+
+      if (req.get("x-admin-token") !== adminToken) {
+        return res.status(403).json({ error: "Program reset requires a valid x-admin-token header." });
+      }
+    }
 
     const wallet = setupTreasuryWallet("bountybot-treasury");
-    const policy = setupPolicy(maxPerBug, dailyLimit);
+    const policy = setupPolicy(parsedMaxPerBug, parsedDailyLimit);
 
     let agentKey;
     try {
@@ -101,8 +142,8 @@ export function createApp() {
       },
       policy: {
         id: policy.id,
-        maxPerBug,
-        dailyLimit,
+        maxPerBug: parsedMaxPerBug,
+        dailyLimit: parsedDailyLimit,
         allowedChains: Object.keys(ALLOWED_SIGNING_CHAINS),
         allowedChainIds: Object.values(ALLOWED_SIGNING_CHAINS),
       },

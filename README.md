@@ -24,6 +24,7 @@ Submit a bug report → agent evaluates quality & severity → payout approval i
 - **Duplicate detection** — Prevents double payouts for the same finding, even after a restart
 - **Persistent state** — Reports, payout approvals, counters, and duplicate history survive process restarts
 - **Policy enforcement** — App-level per-bug and daily spending limits with an explicit EVM/Solana signing allowlist
+- **Safe reconfiguration** — Existing programs cannot be reset unless `BOUNTYBOT_ADMIN_TOKEN` is configured and supplied
 - **Multi-chain wallets** — Single treasury with addresses for EVM, Solana, Bitcoin, Cosmos, and more
 - **Real-time dashboard** — Live SSE feed showing submissions, evaluations, and payout approvals
 - **Demo mode** — One-click buttons to fill high-quality and low-quality sample reports
@@ -46,6 +47,9 @@ npm start
 
 # Test
 npm test
+
+# Optional: allow authenticated program resets
+export BOUNTYBOT_ADMIN_TOKEN="change-me"
 ```
 
 Open **http://localhost:4000** in your browser.
@@ -105,6 +109,8 @@ BountyBot uses three core OWS primitives:
 The demo currently signs payout approvals, not raw transactions. A live deployment would hand the approval to a relayer or switch to `signAndSend` with chain-specific transaction construction.
 
 For the current SDK flow, the server mirrors the chain allowlist in request validation and only accepts `evm` and `solana` payout chains.
+
+Program creation also validates `maxPerBug` and `dailyLimit` as positive numbers. Once a program exists, `/api/bounty/create` becomes reset-protected and only accepts a replacement configuration when `BOUNTYBOT_ADMIN_TOKEN` is set and sent as `x-admin-token`.
 
 The agent can approve and sign payouts but **cannot**:
 - Exceed per-transaction or daily spending limits
