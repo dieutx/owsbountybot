@@ -658,12 +658,17 @@ document.getElementById("reporterWallet").addEventListener("input", () => {
   const addr = document.getElementById("reporterWallet").value.trim();
   const chainSelect = document.getElementById("chainSelect");
   const detected = document.getElementById("detectedChain");
-  if (chainSelect.value === "auto" && addr.length > 10) {
+  if (addr.length > 10) {
     const result = detectChain(addr);
     if (result) {
       detected.textContent = "Detected: " + result.label;
+      // Auto-switch dropdown to match detected chain
+      if (chainSelect.value === "auto" || chainSelect.value !== result.chain) {
+        chainSelect.value = result.chain;
+      }
     } else {
       detected.textContent = "";
+      if (chainSelect.value !== "auto") chainSelect.value = "auto";
     }
   } else {
     detected.textContent = "";
