@@ -473,6 +473,23 @@ test("XSS payload in report title is stored safely", async () => {
   }
 });
 
+test("Tron address is detected as tron, not solana", async () => {
+  const sb = sandbox();
+  const { server, base } = await startServer(sb);
+  try {
+    await createProgram(base);
+    const { status, json } = await submitReport(base, {
+      reporterWallet: "T9yD14Nj9j7xAB4dbGeiX9h8unkKHxuWwb",
+      chain: "auto",
+    });
+    assert.equal(status, 200);
+    assert.equal(json.chain, "tron");
+  } finally {
+    await stop(server);
+    sb.cleanup();
+  }
+});
+
 test("invalid status filter returns 400", async () => {
   const sb = sandbox();
   const { server, base } = await startServer(sb);
