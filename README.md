@@ -49,6 +49,11 @@ Researchers submit bug reports. The system evaluates quality, detects duplicates
 - **Real-time dashboard** — SSE feed with status filters (All / Signed / Pending / Rejected / Duplicates), silent background sync with smart diff (only changed items update), live connection indicator
 - **Demo mode** — 16 randomized sample reports across 3 quality tiers (High / Medium / Low / Random), different each click
 - **Reset** — One-click feed reset clears all reports, transactions, and budget counters
+- **Click-to-expand** — Click any report to see full description + audit trail timeline
+- **Admin review panel** — Inline approve/reject buttons for pending reports (requires admin token)
+- **CSV export** — `GET /api/reports/export` (admin-only) downloads all reports as CSV
+- **Health check** — `GET /api/health` for load balancers and monitoring
+- **Retry signing** — `POST /api/report/:id/retry-sign` for reports stuck in approved state
 - **Zod validation** — All inputs validated with structured error responses
 - **Security hardened** — CORS, CSP, rate limiting, constant-time token comparison, signature redaction
 
@@ -60,7 +65,7 @@ cd owsbountybot
 npm install
 npm run setup   # Create OWS wallet, policy, agent key
 npm start       # http://localhost:4000
-npm test        # 18 integration tests
+npm test        # 24 integration tests
 ```
 
 ## Environment Variables
@@ -107,7 +112,7 @@ npm test        # 18 integration tests
 │       └── schemas.js       # Zod validation schemas
 ├── frontend/                # Vanilla HTML/CSS/JS dashboard
 ├── tests/
-│   └── server.test.js       # 18 integration tests
+│   └── server.test.js       # 24 integration tests
 └── package.json
 ```
 
@@ -125,7 +130,10 @@ npm test        # 18 integration tests
 | `/api/wallet` | GET | Treasury wallet address (EVM only) |
 | `/api/transactions` | GET | Payout authorization history |
 | `/api/policy` | GET | Active policy config + daily budget |
+| `/api/report/:id/retry-sign` | POST | Retry signing for approved reports (admin) |
+| `/api/reports/export` | GET | CSV export of all reports (admin) |
 | `/api/audit` | GET | Audit log entries (`?entity_type=`, `?entity_id=`, `?correlation_id=`) |
+| `/api/health` | GET | Health check (pings database) |
 | `/api/events` | GET | SSE stream for real-time updates |
 
 ### Report Lifecycle
@@ -161,8 +169,10 @@ pending → evaluating → rejected
 
 - CORS restricted to production origin
 - CSP, X-Frame-Options, X-Content-Type-Options headers
-- Rate limiting: 5 requests/min per IP on submit
-- SSE connection cap: 200
+- Rate limiting: 5 requests/min per IP on submit, per-IP SSE connection limits
+- SSE connection cap: 200 with heartbeat for dead connection cleanup
+- SSE auto-reconnect with exponential backoff (frontend)
+- Atomic daily budget enforcement via SQLite transactions
 - Input validation via Zod with 16kb body limit
 - Wallet address format validation per chain
 - Constant-time admin token comparison
