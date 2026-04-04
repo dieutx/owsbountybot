@@ -149,6 +149,8 @@ header { text-align: center; padding: 32px 0 24px; }
 .sev.low { color: var(--text-dim); }
 .sev:has(input:checked) { border-color: currentColor; background: rgba(255,255,255,0.05); }
 
+.btn-loading { display: none; }
+
 button[type="submit"] {
   width: 100%;
   padding: 14px;
