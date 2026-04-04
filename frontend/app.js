@@ -233,6 +233,34 @@ function buildFeedItem(report) {
 
   const item = el("div", { className: `feed-item ${statusClass}`, id: `report-${report.id}` });
 
+  // Click to expand/collapse detail
+  item.addEventListener("click", async (e) => {
+    if (e.target.closest(".review-btn") || e.target.closest("button")) return;
+    const existing = item.querySelector(".report-detail");
+    if (existing) { existing.remove(); return; }
+    try {
+      const res = await fetch(`${API}/api/report/${report.id}`);
+      if (!res.ok) return;
+      const detail = await res.json();
+      const detailDiv = el("div", { className: "report-detail" });
+      if (detail.description_preview) {
+        detailDiv.appendChild(el("div", { className: "detail-section" }, [
+          el("strong", { textContent: "Description: " }), text(detail.description_preview),
+        ]));
+      }
+      if (detail.audit && detail.audit.length > 0) {
+        detailDiv.appendChild(el("div", { className: "detail-section" }, [el("strong", { textContent: "Audit Trail:" })]));
+        for (const a of detail.audit) {
+          detailDiv.appendChild(el("div", { className: "audit-entry" }, [
+            el("span", { className: "audit-action", textContent: a.action }),
+            text(` · ${new Date(a.at).toLocaleTimeString()}`),
+          ]));
+        }
+      }
+      item.appendChild(detailDiv);
+    } catch {}
+  });
+
   item.appendChild(el("div", { className: "header" }, [
     el("span", { className: "title", textContent: report.title }),
     el("span", { className: `status ${statusClass}`, textContent: (report.status || "").replace(/_/g, " ") }),
@@ -400,11 +428,12 @@ document.getElementById("reportForm").addEventListener("submit", async (e) => {
       msgEl.className = "form-message error";
       msgEl.hidden = false;
     } else {
-      // Show the result immediately in the feed (don't wait for SSE)
       addFeedItem(json);
       refreshStats();
+      showToast(`Report submitted: ${json.status}`, json.status === "rejected" ? "warning" : "success");
       document.getElementById("reportForm").reset();
       document.querySelector('input[name="severity"][value="high"]').checked = true;
+      updateCharCounter();
     }
   } catch (err) {
     msgEl.textContent = "Network error. Try again.";
@@ -536,6 +565,18 @@ function fillGoodReport() { fillForm(pick(GOOD_REPORTS)); }
 function fillMediumReport() { fillForm(pick(MEDIUM_REPORTS)); }
 function fillBadReport() { fillForm(pick(BAD_REPORTS)); }
 function fillRandomReport() { fillForm(pick([...GOOD_REPORTS, ...MEDIUM_REPORTS, ...BAD_REPORTS])); }
+
+// Character counter for description
+function updateCharCounter() {
+  const desc = document.getElementById("bugDescription");
+  const counter = document.getElementById("charCounter");
+  if (desc && counter) {
+    const len = desc.value.length;
+    counter.textContent = `${len} / 5000`;
+    counter.style.color = len > 4500 ? "var(--red)" : len > 3000 ? "var(--orange)" : "var(--text-dim)";
+  }
+}
+document.getElementById("bugDescription").addEventListener("input", updateCharCounter);
 
 // Bind buttons (no inline onclick — CSP blocks them)
 document.getElementById("demoGood").addEventListener("click", fillGoodReport);

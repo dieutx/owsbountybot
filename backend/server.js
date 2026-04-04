@@ -699,6 +699,29 @@ export function createApp() {
     res.json({ ok: true, message: "All reports, transactions, and budgets cleared." });
   });
 
+  // CSV export (admin-only)
+  app.get("/api/reports/export", requireAdmin, (req, res) => {
+    const program = getActiveProgram();
+    if (!program) return res.status(404).json({ error: "No program" });
+    const rows = getDb().prepare("SELECT * FROM reports WHERE program_id = ? ORDER BY created_at DESC").all(program.id);
+
+    const csvEscape = (v) => {
+      if (v == null) return "";
+      const s = String(v);
+      return s.includes(",") || s.includes('"') || s.includes("\n") ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+
+    const headers = ["id","title","severity","status","quality_score","confidence","payout","vuln_class","affected_asset","chain","reporter_wallet","review_level","duplicate_of","duplicate_score","reasoning","created_at","evaluated_at","signed_at"];
+    const lines = [headers.join(",")];
+    for (const r of rows) {
+      lines.push(headers.map(h => csvEscape(r[h])).join(","));
+    }
+
+    res.setHeader("Content-Type", "text/csv");
+    res.setHeader("Content-Disposition", `attachment; filename="bountybot-reports-${new Date().toISOString().slice(0,10)}.csv"`);
+    res.send(lines.join("\n"));
+  });
+
   app._sseClients = sseClients;
   app._heartbeatInterval = heartbeatInterval;
 
