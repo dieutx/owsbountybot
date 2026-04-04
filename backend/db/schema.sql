@@ -61,7 +61,10 @@ CREATE TABLE IF NOT EXISTS transactions (
   program_id TEXT NOT NULL REFERENCES programs(id),
   amount REAL NOT NULL,
   recipient TEXT NOT NULL,
-  chain TEXT NOT NULL,
+  chain TEXT NOT NULL,         -- recipient's chain
+  source_chain TEXT,           -- treasury's funding chain (if different = needs bridge)
+  needs_bridge INTEGER DEFAULT 0,
+  bridge_status TEXT CHECK(bridge_status IN (NULL, 'pending','bridging','bridged','failed')),
   token TEXT DEFAULT 'USDC',
   status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN (
     'pending','signed','broadcasted','confirmed','failed'
@@ -69,6 +72,7 @@ CREATE TABLE IF NOT EXISTS transactions (
   authorization_id TEXT,
   signature TEXT,
   tx_hash TEXT,
+  bridge_tx_hash TEXT,
   nonce TEXT,
   created_at TEXT NOT NULL,
   confirmed_at TEXT

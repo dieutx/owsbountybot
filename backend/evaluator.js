@@ -1,6 +1,6 @@
 // Bug Report Triage Engine
 // Scores reports on quality, validates severity, recommends payout, and assigns confidence.
-// Deterministic rules only — no LLM calls. Optional AI hooks can be added later.
+// Deterministic rules only — pattern matching + heuristics.
 
 import { detectVulnClass, extractAffectedAsset } from "./lib/fingerprint.js";
 
