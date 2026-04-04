@@ -81,8 +81,8 @@
         <!-- Quick Demo Buttons -->
         <div class="demo-buttons">
           <p>Quick Demo:</p>
-          <button class="demo-btn good" onclick="fillGoodReport()">Fill High-Quality Bug</button>
-          <button class="demo-btn bad" onclick="fillBadReport()">Fill Low-Quality Report</button>
+          <button class="demo-btn good" id="demoGood">Fill High-Quality Bug</button>
+          <button class="demo-btn bad" id="demoBad">Fill Low-Quality Report</button>
         </div>
       </div>
 
@@ -90,11 +90,11 @@
       <div class="panel feed-panel">
         <h2>Live Activity Feed</h2>
         <div class="filters">
-          <button class="filter-btn active" data-filter="all" onclick="setFilter('all')">All</button>
-          <button class="filter-btn" data-filter="signed" onclick="setFilter('signed')">Signed</button>
-          <button class="filter-btn" data-filter="pending_review" onclick="setFilter('pending_review')">Pending</button>
-          <button class="filter-btn" data-filter="rejected" onclick="setFilter('rejected')">Rejected</button>
-          <button class="filter-btn" data-filter="probable_duplicate" onclick="setFilter('probable_duplicate')">Duplicates</button>
+          <button class="filter-btn active" data-filter="all">All</button>
+          <button class="filter-btn" data-filter="signed">Signed</button>
+          <button class="filter-btn" data-filter="pending_review">Pending</button>
+          <button class="filter-btn" data-filter="rejected">Rejected</button>
+          <button class="filter-btn" data-filter="probable_duplicate">Duplicates</button>
         </div>
         <div id="feed" class="feed">
           <div class="feed-empty">

@@ -226,7 +226,7 @@ document.getElementById("reportForm").addEventListener("submit", async (e) => {
   btn.querySelector(".btn-loading").style.display = "none";
 });
 
-window.fillGoodReport = function () {
+function fillGoodReport() {
   document.getElementById("bugTitle").value = "SQL Injection in /api/users search endpoint";
   document.querySelector('input[name="severity"][value="critical"]').checked = true;
   document.getElementById("bugDescription").value = `Steps to reproduce:
@@ -246,12 +246,18 @@ Recommended fix: Use parameterized queries with prepared statements.`;
   document.getElementById("reporterWallet").value = "0x742d35Cc6634C0532925a3b844Bc9e7595f2bD38";
 };
 
-window.fillBadReport = function () {
+function fillBadReport() {
   document.getElementById("bugTitle").value = "something might be broken";
   document.querySelector('input[name="severity"][value="low"]').checked = true;
   document.getElementById("bugDescription").value = "I'm not sure but maybe the site is slow sometimes. Could be a bug?";
   document.getElementById("reporterWallet").value = "0xDEADBEEF000000000000000000000000DeAdBeEf";
 };
 
-window.setFilter = setFilter;
+// Bind buttons (no inline onclick — CSP blocks them)
+document.getElementById("demoGood").addEventListener("click", fillGoodReport);
+document.getElementById("demoBad").addEventListener("click", fillBadReport);
+document.querySelectorAll(".filter-btn").forEach(btn => {
+  btn.addEventListener("click", () => setFilter(btn.dataset.filter));
+});
+
 init();
