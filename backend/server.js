@@ -183,9 +183,28 @@ export function createApp() {
   const app = express();
   const sseClients = new Set();
 
+  // SSE heartbeat - detect dead connections
+  const SSE_HEARTBEAT_MS = 30_000;
+  const heartbeatInterval = setInterval(() => {
+    for (const res of sseClients) {
+      try {
+        res.write(":heartbeat\n\n");
+      } catch {
+        sseClients.delete(res);
+      }
+    }
+  }, SSE_HEARTBEAT_MS);
+  heartbeatInterval.unref();
+
   function broadcast(event, data) {
     const msg = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
-    for (const res of sseClients) res.write(msg);
+    for (const res of sseClients) {
+      try {
+        res.write(msg);
+      } catch {
+        sseClients.delete(res);
+      }
+    }
   }
 
   // Security headers
@@ -569,6 +588,9 @@ export function createApp() {
     res.json({ ok: true, message: "All reports, transactions, and budgets cleared." });
   });
 
+  app._sseClients = sseClients;
+  app._heartbeatInterval = heartbeatInterval;
+
   return app;
 }
 
@@ -578,8 +600,28 @@ export function startServer(port = DEFAULT_PORT) {
     console.log(`\n🤖 BountyBot server running at http://localhost:${port}`);
     console.log(`📋 Dashboard: http://localhost:${port}\n`);
   });
-  process.on("SIGTERM", () => { closeDb(); server.close(); });
-  process.on("SIGINT", () => { closeDb(); server.close(); });
+
+  function shutdown() {
+    console.log("\nShutting down gracefully...");
+    clearInterval(app._heartbeatInterval);
+    for (const res of app._sseClients) {
+      try { res.end(); } catch { /* already closed */ }
+    }
+    app._sseClients.clear();
+    server.close(() => {
+      closeDb();
+      process.exit(0);
+    });
+    // Force exit after 5s if graceful shutdown hangs
+    setTimeout(() => {
+      console.error("Forced shutdown after timeout");
+      closeDb();
+      process.exit(1);
+    }, 5000).unref();
+  }
+
+  process.on("SIGTERM", shutdown);
+  process.on("SIGINT", shutdown);
   return server;
 }
 
