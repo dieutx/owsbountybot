@@ -27,7 +27,7 @@ async function init() {
     if (res.ok) {
       programInitialized = true;
       updateStats(await res.json());
-      loadReports();
+      loadReports(true);
     }
   } catch {}
 
@@ -74,10 +74,8 @@ async function resetAll() {
   try {
     const res = await fetch(`${API}/api/reset`, { method: "POST" });
     if (res.ok) {
-      document.getElementById("feed").textContent = "";
-      document.getElementById("feed").appendChild(
-        el("div", { className: "feed-empty" }, [el("p", { textContent: "Feed cleared. Submit a new bug report!" })])
-      );
+      knownStates.clear();
+      loadReports(true);
       refreshStats();
     }
   } catch {}
@@ -114,31 +112,78 @@ async function refreshStats() {
   } catch {}
 }
 
-async function loadReports() {
+// Track known report states to avoid unnecessary DOM updates
+const knownStates = new Map();
+
+async function loadReports(forceRebuild = false) {
   try {
     const url = currentFilter === "all" ? `${API}/api/reports`
       : currentFilter === "duplicates" ? `${API}/api/reports?duplicates=1`
       : `${API}/api/reports?status=${currentFilter}`;
     const res = await fetch(url);
-    if (res.ok) {
-      const reports = await res.json();
-      const feed = document.getElementById("feed");
+    if (!res.ok) return;
+    const reports = await res.json();
+    const feed = document.getElementById("feed");
+
+    if (forceRebuild) {
       feed.textContent = "";
+      knownStates.clear();
       if (reports.length === 0) {
         feed.appendChild(el("div", { className: "feed-empty" }, [el("p", { textContent: "No reports match this filter." })]));
       } else {
-        reports.forEach(r => addFeedItem(r, false));
+        reports.forEach(r => {
+          knownStates.set(r.id, r.status);
+          addFeedItem(r, false);
+        });
       }
+      return;
+    }
+
+    // Smart diff: only update items whose status changed or that are new
+    const serverIds = new Set(reports.map(r => r.id));
+
+    for (const r of reports) {
+      const existing = document.getElementById(`report-${r.id}`);
+      if (!existing) {
+        // New item
+        knownStates.set(r.id, r.status);
+        addFeedItem(r, true);
+      } else if (knownStates.get(r.id) !== r.status) {
+        // Status changed — update quietly (no animation)
+        knownStates.set(r.id, r.status);
+        existing.replaceWith(buildFeedItem(r));
+      }
+    }
+
+    // Remove items no longer in server response (e.g. after reset or filter change)
+    for (const node of [...feed.querySelectorAll(".feed-item")]) {
+      const id = node.id.replace("report-", "");
+      if (!serverIds.has(id)) node.remove();
+    }
+
+    // Show empty state if needed
+    const empty = feed.querySelector(".feed-empty");
+    if (feed.querySelectorAll(".feed-item").length === 0 && !empty) {
+      feed.appendChild(el("div", { className: "feed-empty" }, [el("p", { textContent: "No reports match this filter." })]));
+    } else if (feed.querySelectorAll(".feed-item").length > 0 && empty) {
+      empty.remove();
     }
   } catch {}
 }
 
 function addFeedItem(report, prepend = true) {
+  if (!report || !report.id) return;
+  // Skip if already in feed
+  if (document.getElementById(`report-${report.id}`)) {
+    updateFeedItem(report);
+    return;
+  }
   const feed = document.getElementById("feed");
   const empty = feed.querySelector(".feed-empty");
   if (empty) empty.remove();
   if (currentFilter === "duplicates" && !report.duplicate_of) return;
   if (currentFilter !== "all" && currentFilter !== "duplicates" && report.status !== currentFilter) return;
+  knownStates.set(report.id, report.status);
   const item = buildFeedItem(report);
   if (prepend) feed.prepend(item); else feed.appendChild(item);
 }
@@ -219,7 +264,7 @@ function setFilter(filter) {
   document.querySelectorAll(".filter-btn").forEach(btn => {
     btn.classList.toggle("active", btn.dataset.filter === filter);
   });
-  loadReports();
+  loadReports(true); // force rebuild on filter change
 }
 
 document.getElementById("reportForm").addEventListener("submit", async (e) => {
