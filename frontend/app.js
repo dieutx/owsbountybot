@@ -369,19 +369,28 @@ function buildFeedItem(report) {
 
   if ((report.status === "pending_review" || report.status === "probable_duplicate") && adminToken) {
     const actions = el("div", { className: "review-actions" });
-    actions.appendChild(el("span", { style: { fontSize: "11px", color: "var(--orange)" }, textContent: `Awaiting ${report.review_level || "manual"} review` }));
+    actions.appendChild(el("span", { style: { fontSize: "11px", color: "var(--orange)" }, textContent: `Awaiting ${report.review_level || "manual"} review · suggested: $${report.payout}` }));
 
     const btnRow = el("div", { className: "review-btn-row" });
+
+    // Payout adjustment input
+    const payoutInput = el("input", { className: "payout-adjust", type: "number", value: String(report.payout || 0), title: "Adjust payout amount" });
+    payoutInput.setAttribute("min", "1");
+    payoutInput.setAttribute("step", "1");
+    payoutInput.addEventListener("click", (e) => e.stopPropagation());
+    btnRow.appendChild(payoutInput);
 
     const approveBtn = el("button", { className: "review-btn approve", textContent: "Approve" });
     approveBtn.addEventListener("click", async (e) => {
       e.stopPropagation();
+      const adjustedPayout = Number(payoutInput.value);
+      if (!adjustedPayout || adjustedPayout <= 0) { showToast("Payout must be greater than 0", "warning"); return; }
       approveBtn.disabled = true;
       try {
         const res = await fetch(`${API}/api/report/${report.id}/review`, {
           method: "POST",
           headers: { "Content-Type": "application/json", "x-admin-token": adminToken },
-          body: JSON.stringify({ action: "approve", reviewedBy: "admin" }),
+          body: JSON.stringify({ action: "approve", reviewedBy: "admin", adjustedPayout }),
         });
         const json = await res.json();
         if (!res.ok) {
