@@ -92,7 +92,9 @@ async function refreshStats() {
 
 async function loadReports() {
   try {
-    const url = currentFilter === "all" ? `${API}/api/reports` : `${API}/api/reports?status=${currentFilter}`;
+    const url = currentFilter === "all" ? `${API}/api/reports`
+      : currentFilter === "duplicates" ? `${API}/api/reports?duplicates=1`
+      : `${API}/api/reports?status=${currentFilter}`;
     const res = await fetch(url);
     if (res.ok) {
       const reports = await res.json();
@@ -111,7 +113,8 @@ function addFeedItem(report, prepend = true) {
   const feed = document.getElementById("feed");
   const empty = feed.querySelector(".feed-empty");
   if (empty) empty.remove();
-  if (currentFilter !== "all" && report.status !== currentFilter) return;
+  if (currentFilter === "duplicates" && !report.duplicate_of) return;
+  if (currentFilter !== "all" && currentFilter !== "duplicates" && report.status !== currentFilter) return;
   const item = buildFeedItem(report);
   if (prepend) feed.prepend(item); else feed.appendChild(item);
 }

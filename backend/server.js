@@ -479,9 +479,11 @@ export function createApp() {
   app.get("/api/reports", (req, res) => {
     const program = getActiveProgram();
     if (!program) return res.json([]);
-    const { status, limit = 50 } = req.query;
+    const { status, duplicates, limit = 50 } = req.query;
     let rows;
-    if (status) {
+    if (duplicates) {
+      rows = getDb().prepare("SELECT * FROM reports WHERE program_id = ? AND duplicate_of IS NOT NULL ORDER BY created_at DESC LIMIT ?").all(program.id, Number(limit));
+    } else if (status) {
       rows = getDb().prepare("SELECT * FROM reports WHERE program_id = ? AND status = ? ORDER BY created_at DESC LIMIT ?").all(program.id, status, Number(limit));
     } else {
       rows = getDb().prepare("SELECT * FROM reports WHERE program_id = ? ORDER BY created_at DESC LIMIT ?").all(program.id, Number(limit));
