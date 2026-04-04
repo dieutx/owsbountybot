@@ -143,6 +143,7 @@ test("duplicate detection rejects identical reports", async () => {
 
 test("manual review endpoint approves pending report", async () => {
   const sb = sandbox();
+  process.env.BOUNTYBOT_ADMIN_TOKEN = "admin123";
   const { server, base } = await startServer(sb);
   try {
     await createProgram(base);
@@ -151,6 +152,7 @@ test("manual review endpoint approves pending report", async () => {
 
     const { json: reviewed } = await api(base, `/api/report/${report.id}/review`, {
       method: "POST",
+      headers: { "x-admin-token": "admin123" },
       body: JSON.stringify({ action: "approve", reviewedBy: "admin" }),
     });
     assert.equal(reviewed.status, "signed");
@@ -163,15 +165,35 @@ test("manual review endpoint approves pending report", async () => {
 
 test("manual review endpoint rejects pending report", async () => {
   const sb = sandbox();
+  process.env.BOUNTYBOT_ADMIN_TOKEN = "admin123";
   const { server, base } = await startServer(sb);
   try {
     await createProgram(base);
     const { json: report } = await submitReport(base);
     const { json: reviewed } = await api(base, `/api/report/${report.id}/review`, {
       method: "POST",
+      headers: { "x-admin-token": "admin123" },
       body: JSON.stringify({ action: "reject", reason: "Not a real vulnerability" }),
     });
     assert.equal(reviewed.status, "rejected");
+  } finally {
+    await stop(server);
+    sb.cleanup();
+  }
+});
+
+test("manual review endpoint blocks unauthenticated requests", async () => {
+  const sb = sandbox();
+  process.env.BOUNTYBOT_ADMIN_TOKEN = "admin123";
+  const { server, base } = await startServer(sb);
+  try {
+    await createProgram(base);
+    const { json: report } = await submitReport(base);
+    const { status } = await api(base, `/api/report/${report.id}/review`, {
+      method: "POST",
+      body: JSON.stringify({ action: "approve", reviewedBy: "attacker" }),
+    });
+    assert.equal(status, 403);
   } finally {
     await stop(server);
     sb.cleanup();

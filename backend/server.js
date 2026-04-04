@@ -77,6 +77,17 @@ function clientIp(req) {
   return req.ip || req.socket?.remoteAddress || "unknown";
 }
 
+function requireAdmin(req, res, next) {
+  const adminToken = getAdminToken();
+  if (!adminToken) {
+    return res.status(403).json({ error: "System not configured for administrative actions (BOUNTYBOT_ADMIN_TOKEN missing)." });
+  }
+  if (!constantTimeEqual(req.get("x-admin-token"), adminToken)) {
+    return res.status(403).json({ error: "Invalid or missing admin token." });
+  }
+  next();
+}
+
 // Sanitize DB rows for client responses
 function sanitizeReport(r) {
   if (!r) return null;
@@ -413,7 +424,7 @@ export function createApp() {
 
   // === MANUAL REVIEW ===
 
-  app.post("/api/report/:id/review", (req, res) => {
+  app.post("/api/report/:id/review", requireAdmin, (req, res) => {
     const cid = correlationId();
     const v = validate(ReviewReportSchema, req.body || {});
     if (!v.success) return res.status(400).json({ error: v.error });
@@ -531,7 +542,7 @@ export function createApp() {
   });
 
   // Reset: wipe all reports/transactions for the active program (demo convenience)
-  app.post("/api/reset", (req, res) => {
+  app.post("/api/reset", requireAdmin, (req, res) => {
     const cid = correlationId();
     const program = getActiveProgram();
     if (!program) return res.status(404).json({ error: "No program to reset." });
