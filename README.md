@@ -46,7 +46,9 @@ Researchers submit bug reports. The system evaluates quality, detects duplicates
 - **Manual review API** — Approve or reject pending reports with adjusted payouts
 - **Append-only audit log** — Every action recorded with correlation IDs
 - **SQLite persistence** — WAL mode, proper schema with indexes, survives restarts
-- **Real-time dashboard** — SSE feed with status filters and decision context
+- **Real-time dashboard** — SSE feed with status filters (All / Signed / Pending / Rejected / Duplicates), silent background sync with smart diff (only changed items update), live connection indicator
+- **Demo mode** — 16 randomized sample reports across 3 quality tiers (High / Medium / Low / Random), different each click
+- **Reset** — One-click feed reset clears all reports, transactions, and budget counters
 - **Zod validation** — All inputs validated with structured error responses
 - **Security hardened** — CORS, CSP, rate limiting, constant-time token comparison, signature redaction
 
@@ -118,7 +120,8 @@ npm test        # 15 integration tests
 | `/api/report/submit` | POST | Submit a bug report |
 | `/api/report/:id` | GET | Report detail with audit trail |
 | `/api/report/:id/review` | POST | Approve or reject a pending report |
-| `/api/reports` | GET | List reports (supports `?status=` filter) |
+| `/api/reports` | GET | List reports (`?status=`, `?duplicates=1`) |
+| `/api/reset` | POST | Clear all reports, transactions, and budgets |
 | `/api/wallet` | GET | Treasury wallet address (EVM only) |
 | `/api/transactions` | GET | Payout authorization history |
 | `/api/policy` | GET | Active policy config + daily budget |

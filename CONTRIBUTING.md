@@ -44,6 +44,8 @@ Tests use Node's built-in test runner with sandboxed temp directories. Each test
 - **ESM modules** throughout (`"type": "module"` in package.json).
 - **Deterministic evaluator** — no LLM calls. Pattern matching + heuristics only.
 - **Signatures never sent to clients** — stripped in `sanitizeReport`/`sanitizeTransaction`.
+- **No inline onclick** in HTML — all event listeners bound via `addEventListener` in `app.js` (CSP requires this).
+- **Smart-diff refresh** — background sync only updates DOM for items whose status changed, no full feed rebuild.
 
 ## How to Contribute
 
@@ -59,6 +61,8 @@ Tests use Node's built-in test runner with sandboxed temp directories. Each test
 - All new API inputs must have Zod schemas
 - State-changing actions must create audit log entries
 - New report statuses must be added to the `CHECK` constraint in `schema.sql`
+- No inline `onclick` attributes in HTML — bind via `addEventListener` in `app.js`
+- Demo reports pool is in `app.js` — add new examples to `GOOD_REPORTS`, `MEDIUM_REPORTS`, or `BAD_REPORTS` arrays
 
 ## License
 
