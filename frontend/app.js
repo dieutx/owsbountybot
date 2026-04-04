@@ -404,11 +404,14 @@ function buildFeedItem(report) {
       approveBtn.disabled = false;
     });
 
+    const reasonInput = el("input", { className: "reject-reason", type: "text", placeholder: "Rejection reason..." });
+    reasonInput.addEventListener("click", (e) => e.stopPropagation());
+
     const rejectBtn = el("button", { className: "review-btn reject", textContent: "Reject" });
     rejectBtn.addEventListener("click", async (e) => {
       e.stopPropagation();
-      const reason = prompt("Rejection reason:");
-      if (!reason) return;
+      const reason = reasonInput.value.trim();
+      if (!reason) { showToast("Enter a rejection reason first", "warning"); reasonInput.focus(); return; }
       rejectBtn.disabled = true;
       try {
         const res = await fetch(`${API}/api/report/${report.id}/review`, {
@@ -431,6 +434,7 @@ function buildFeedItem(report) {
     btnRow.appendChild(approveBtn);
     btnRow.appendChild(rejectBtn);
     actions.appendChild(btnRow);
+    actions.appendChild(reasonInput);
     item.appendChild(actions);
   } else if (report.status === "pending_review" || report.status === "probable_duplicate") {
     item.appendChild(el("div", { className: "review-actions" }, [
