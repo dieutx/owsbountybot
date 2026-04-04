@@ -60,28 +60,13 @@ function connectSSE() {
   evtSource.onerror = () => { sseConnected = false; };
 }
 
-// Auto-refresh with countdown (fallback when SSE is down, also keeps stats fresh)
-const REFRESH_INTERVAL = 15; // seconds
-let refreshCountdown = REFRESH_INTERVAL;
-
+// Silent background sync — no visible countdown, just a tiny status dot
 setInterval(() => {
-  refreshCountdown--;
-  const timerEl = document.getElementById("refreshTimer");
-  if (timerEl) {
-    if (!sseConnected) {
-      timerEl.textContent = "SSE offline · refresh in " + refreshCountdown + "s";
-      timerEl.style.color = "var(--orange)";
-    } else {
-      timerEl.textContent = "sync in " + refreshCountdown + "s";
-      timerEl.style.color = "";
-    }
-  }
-  if (refreshCountdown <= 0) {
-    refreshCountdown = REFRESH_INTERVAL;
-    refreshStats();
-    if (!sseConnected) loadReports();
-  }
-}, 1000);
+  const dot = document.getElementById("statusDot");
+  if (dot) dot.className = "status-dot " + (sseConnected ? "live" : "offline");
+  refreshStats();
+  if (!sseConnected) loadReports();
+}, 15000);
 
 // Reset
 async function resetAll() {
