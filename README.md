@@ -1,9 +1,5 @@
 # BountyBot
 
-Automated bug bounty triage and payout authorization agent powered by the [Open Wallet Standard (OWS)](https://openwallet.sh).
-
-Researchers submit bug reports. The system evaluates quality, detects duplicates, enforces spending policies, and cryptographically signs payout authorizations — all without exposing private keys.
-
 [![Live Demo](https://img.shields.io/badge/Live_Demo-owsbountybot.shelmail.xyz-6c5ce7)](https://owsbountybot.shelmail.xyz)
 ![OWS](https://img.shields.io/badge/OWS-Powered-6c5ce7)
 ![Node.js](https://img.shields.io/badge/Node.js-24+-339933)
@@ -11,29 +7,53 @@ Researchers submit bug reports. The system evaluates quality, detects duplicates
 
 > Built for the [OWS Hackathon 2026](https://hackathon.openwallet.sh) — Track 2: Agent Spend Governance & Identity
 
-## Live Demo
+## The Problem
 
-**https://owsbountybot.shelmail.xyz**
+Bug bounty programs today are slow and expensive to operate:
 
-## How It Works
+- **Manual triage** — Security teams spend hours reading low-quality reports, duplicates, and spam before finding real vulnerabilities
+- **Slow payouts** — Approved bounties take days or weeks to process through finance, legal, and payment systems
+- **No spending control** — Once a wallet is funded, there's no way to enforce per-bug limits, daily caps, or per-reporter quotas without manual oversight
+- **Key exposure risk** — Paying researchers in crypto means someone has to hold and manage private keys, creating a single point of failure
+- **Cross-chain friction** — Researchers use different chains (Ethereum, Solana, Bitcoin, Tron), but most programs only support one
+
+## The Solution
+
+BountyBot is an automated triage and payout authorization agent. It handles the entire flow from submission to signed payout — without anyone touching private keys.
 
 ```
 📝 Bug Report → 🔍 Duplicate Check → 🧠 Evaluate → 🔒 Policy Check → 👤 Review → ✍️ Sign → 📦 Relay
 ```
+
+**How it solves each problem:**
+
+| Problem | How BountyBot solves it |
+|---------|----------------------|
+| Manual triage | Automated quality scoring (0–10) with confidence level. Extracts vulnerability class, affected asset. Low-quality reports auto-rejected. |
+| Slow payouts | Approved reports are signed in seconds. Low-value payouts auto-approve. Medium/high go to admin with one-click approve + adjustable amount. |
+| No spending control | Composable policy engine: per-severity caps, daily budget, per-reporter limits, chain allowlists, cooldowns. All enforced before signing. |
+| Key exposure | Built on [OWS](https://openwallet.sh) — private keys stay in an encrypted vault, decrypted only during signing in hardened memory, wiped immediately after. The agent never sees the key. |
+| Cross-chain friction | Single treasury wallet with addresses on 5 chains. Auto-detects recipient chain from wallet format. Cross-chain payouts flagged with bridge status tracking. |
+| Duplicate spam | Layered fingerprinting (title, description, vuln type, asset) + fuzzy title matching. Exact duplicates rejected, probable duplicates flagged for review. |
+
+**What it is:** A bug bounty triage + payout authorization system.
+
+**What it is not:** A bug scanner, a vulnerability finder, or a full on-chain payment processor. The current version signs authorization messages — a downstream relayer broadcasts the actual transaction.
+
+## Live Demo
+
+**https://owsbountybot.shelmail.xyz** (admin token: `admin`)
+
+## How It Works
 
 1. Researcher submits a bug report with severity, description, and wallet address
 2. **Fingerprinting** detects exact and probable duplicates using layered hashing + trigram similarity
 3. **Evaluator** scores quality (0–10) with confidence level, extracts vulnerability class and affected asset
 4. **Policy engine** checks composable rules: daily budget, per-severity caps, per-reporter limits, chain allowlists, cooldowns
 5. **Review routing** sends low-value payouts to auto-approve, medium to manual review, high to admin review
-6. If approved, OWS **signs** the payout authorization inside the vault — private key decrypted in hardened memory, wiped after use
-7. A downstream relayer can broadcast the real transaction
-
-## What This Is / Is Not
-
-**Is:** A bug bounty triage + payout authorization system. It evaluates reports, enforces spending policies, and signs cryptographic authorizations.
-
-**Is not:** A bug-finding tool, a vulnerability scanner, or a full on-chain payment processor. The current demo signs authorization messages but does not broadcast transactions.
+6. Admin can **adjust the payout amount** and approve/reject with inline controls (no popups)
+7. If approved, OWS **signs** the payout authorization inside the vault — private key decrypted in hardened memory, wiped after use
+8. A downstream relayer can broadcast the real transaction on the correct chain
 
 ## Features
 
