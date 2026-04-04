@@ -497,6 +497,36 @@ export function createApp() {
 
   // === READ ENDPOINTS ===
 
+  // CSV export for admin auditing/compliance
+  app.get("/api/reports/export", requireAdmin, (req, res) => {
+    const program = getActiveProgram();
+    if (!program) return res.status(404).json({ error: "No program" });
+
+    const rows = getDb().prepare(
+      "SELECT id, title, severity, status, chain, quality_score, confidence, payout, vuln_class, affected_asset, review_level, duplicate_of, duplicate_score, reporter_wallet, created_at, evaluated_at, signed_at FROM reports WHERE program_id = ? ORDER BY created_at DESC"
+    ).all(program.id);
+
+    const headers = ["id", "title", "severity", "status", "chain", "quality_score", "confidence", "payout", "vuln_class", "affected_asset", "review_level", "duplicate_of", "duplicate_score", "reporter_wallet", "created_at", "evaluated_at", "signed_at"];
+
+    const csvRows = [headers.join(",")];
+    for (const row of rows) {
+      const values = headers.map(h => {
+        const val = row[h];
+        if (val === null || val === undefined) return "";
+        const str = String(val);
+        if (str.includes(",") || str.includes('"') || str.includes("\n")) {
+          return `"${str.replace(/"/g, '""')}"`;
+        }
+        return str;
+      });
+      csvRows.push(values.join(","));
+    }
+
+    res.setHeader("Content-Type", "text/csv");
+    res.setHeader("Content-Disposition", `attachment; filename="bountybot-reports-${new Date().toISOString().slice(0, 10)}.csv"`);
+    res.send(csvRows.join("\n"));
+  });
+
   app.get("/api/reports", (req, res) => {
     const program = getActiveProgram();
     if (!program) return res.json([]);

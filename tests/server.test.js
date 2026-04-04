@@ -341,6 +341,44 @@ test("Zod validation rejects malformed input", async () => {
   }
 });
 
+test("CSV export requires admin token", async () => {
+  const sb = sandbox();
+  const { server, base } = await startServer(sb);
+  try {
+    await createProgram(base);
+    const { status } = await api(base, "/api/reports/export");
+    assert.equal(status, 403);
+  } finally {
+    await stop(server);
+    sb.cleanup();
+  }
+});
+
+test("CSV export returns valid CSV with admin token", async () => {
+  const sb = sandbox();
+  process.env.BOUNTYBOT_ADMIN_TOKEN = "admin123";
+  const { server, base } = await startServer(sb);
+  try {
+    await createProgram(base);
+    await submitReport(base);
+
+    const res = await fetch(`${base}/api/reports/export`, {
+      headers: { "x-admin-token": "admin123" },
+    });
+    assert.equal(res.status, 200);
+    assert.match(res.headers.get("content-type"), /text\/csv/);
+    assert.match(res.headers.get("content-disposition"), /attachment.*\.csv/);
+
+    const text = await res.text();
+    const lines = text.split("\n");
+    assert.ok(lines.length >= 2); // header + at least 1 row
+    assert.match(lines[0], /id,title,severity/);
+  } finally {
+    await stop(server);
+    sb.cleanup();
+  }
+});
+
 test("GET query parameter validation rejects invalid limit", async () => {
   const sb = sandbox();
   const { server, base } = await startServer(sb);
