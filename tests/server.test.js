@@ -372,3 +372,52 @@ test("GET audit endpoint respects parameters", async () => {
     sb.cleanup();
   }
 });
+
+test("health endpoint returns ok", async () => {
+  const sb = sandbox();
+  const { server, base } = await startServer(sb);
+  try {
+    const { status, json } = await api(base, "/api/health");
+    assert.equal(status, 200);
+    assert.equal(json.status, "ok");
+    assert.ok(json.timestamp);
+  } finally {
+    await stop(server);
+    sb.cleanup();
+  }
+});
+
+test("XSS payload in report title is stored safely", async () => {
+  const sb = sandbox();
+  const { server, base } = await startServer(sb);
+  try {
+    await createProgram(base);
+    const xssPayload = '<script>alert("xss")</script>';
+    const { json } = await submitReport(base, { title: xssPayload });
+    // Title should be stored as-is (text content), not executed
+    // The important thing is it's returned as JSON, not rendered as HTML
+    assert.equal(json.title, xssPayload);
+    // Verify in the reports list endpoint too
+    const { json: reports } = await api(base, "/api/reports");
+    const found = reports.find(r => r.id === json.id);
+    assert.ok(found);
+    assert.equal(found.title, xssPayload);
+  } finally {
+    await stop(server);
+    sb.cleanup();
+  }
+});
+
+test("invalid status filter returns 400", async () => {
+  const sb = sandbox();
+  const { server, base } = await startServer(sb);
+  try {
+    await createProgram(base);
+    const { status, json } = await api(base, "/api/reports?status=invalid_status");
+    assert.equal(status, 400);
+    assert.ok(json.error);
+  } finally {
+    await stop(server);
+    sb.cleanup();
+  }
+});

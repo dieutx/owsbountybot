@@ -551,6 +551,16 @@ export function createApp() {
     res.json(rows);
   });
 
+  // Health check for load balancers and monitoring
+  app.get("/api/health", (req, res) => {
+    try {
+      getDb().prepare("SELECT 1").get();
+      res.json({ status: "ok", timestamp: new Date().toISOString() });
+    } catch (err) {
+      res.status(503).json({ status: "error", message: "Database unavailable" });
+    }
+  });
+
   // Reset: wipe all reports/transactions for the active program (demo convenience)
   app.post("/api/reset", requireAdmin, (req, res) => {
     const cid = correlationId();
