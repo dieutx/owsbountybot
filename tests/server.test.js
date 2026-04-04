@@ -218,9 +218,9 @@ test("invalid chain rejected", async () => {
   const { server, base } = await startServer(sb);
   try {
     await createProgram(base);
-    const { status, json } = await submitReport(base, { chain: "bitcoin" });
+    const { status, json } = await submitReport(base, { chain: "dogecoin" });
     assert.equal(status, 400);
-    assert.match(json.error, /Unsupported chain/);
+    assert.match(json.error, /Unsupported chain|Could not detect/);
   } finally {
     await stop(server);
     sb.cleanup();
@@ -232,7 +232,7 @@ test("invalid wallet address rejected", async () => {
   const { server, base } = await startServer(sb);
   try {
     await createProgram(base);
-    const { status, json } = await submitReport(base, { reporterWallet: "not-a-wallet" });
+    const { status, json } = await submitReport(base, { reporterWallet: "not-a-wallet", chain: "evm" });
     assert.equal(status, 400);
     assert.match(json.error, /Invalid wallet/);
   } finally {
