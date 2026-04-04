@@ -126,11 +126,17 @@ setInterval(() => {
 async function resetAll() {
   if (!confirm("Clear all reports and transactions? This cannot be undone.")) return;
   try {
-    const res = await fetch(`${API}/api/reset`, { method: "POST" });
+    const headers = {};
+    if (adminToken) headers["x-admin-token"] = adminToken;
+    const res = await fetch(`${API}/api/reset`, { method: "POST", headers });
     if (res.ok) {
       knownStates.clear();
       loadReports(true);
       refreshStats();
+      showToast("All reports cleared", "success");
+    } else {
+      const json = await res.json().catch(() => null);
+      showToast(json?.error || "Reset failed. Enter admin mode first.", "warning");
     }
   } catch {}
 }
@@ -631,6 +637,10 @@ function fillForm(r) {
   document.querySelector('input[name="severity"][value="' + r.severity + '"]').checked = true;
   document.getElementById("bugDescription").value = r.description;
   document.getElementById("reporterWallet").value = r.wallet;
+  // Trigger chain auto-detection
+  document.getElementById("reporterWallet").dispatchEvent(new Event("input"));
+  // Update character counter
+  updateCharCounter();
 }
 
 function fillGoodReport() { fillForm(pick(GOOD_REPORTS)); }
