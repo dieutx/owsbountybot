@@ -55,7 +55,7 @@ export function evaluatePolicy(policy, { severity, payout, chain, reporterWallet
     results.push({ allowed: false, rule: "max_per_severity", reason: `Payout $${payout} exceeds max $${maxForSeverity} for ${severity} severity` });
   }
 
-  // Rule 3: Daily budget
+  // Rule 3: Daily budget (preliminary check; atomic enforcement happens in tryRecordDailySpend)
   const db = getDb();
   const today = new Date().toISOString().slice(0, 10);
   const budgetRow = db.prepare("SELECT spent FROM daily_budgets WHERE date = ? AND program_id = ?").get(today, programId);
@@ -103,7 +103,33 @@ export function determineReviewLevel(policy, payoutAmount) {
   return "admin";
 }
 
-// Record daily spend
+// Atomically check the daily budget and record the spend in a single transaction.
+// Returns { success, spent, limit } where spent is the total after recording.
+// If the spend would exceed dailyLimit, the transaction is rolled back and success is false.
+export function tryRecordDailySpend(programId, amount, dailyLimit) {
+  const db = getDb();
+  const today = new Date().toISOString().slice(0, 10);
+
+  const txn = db.transaction(() => {
+    // Upsert to ensure the row exists, then read current value
+    db.prepare(`INSERT INTO daily_budgets (date, program_id, spent) VALUES (?, ?, 0)
+      ON CONFLICT(date, program_id) DO UPDATE SET spent = spent`).run(today, programId);
+
+    const row = db.prepare("SELECT spent FROM daily_budgets WHERE date = ? AND program_id = ?").get(today, programId);
+    const currentSpent = row?.spent || 0;
+
+    if (currentSpent + amount > dailyLimit) {
+      return { success: false, spent: currentSpent, limit: dailyLimit };
+    }
+
+    db.prepare("UPDATE daily_budgets SET spent = spent + ? WHERE date = ? AND program_id = ?").run(amount, today, programId);
+    return { success: true, spent: currentSpent + amount, limit: dailyLimit };
+  });
+
+  return txn();
+}
+
+// Record daily spend (kept for backward compatibility, no limit enforcement)
 export function recordDailySpend(programId, amount) {
   const db = getDb();
   const today = new Date().toISOString().slice(0, 10);

@@ -8,7 +8,7 @@ import { generateId, correlationId } from "./lib/ids.js";
 import { audit, getAuditLog } from "./lib/audit.js";
 import { evaluateReport } from "./evaluator.js";
 import { generateFingerprints, storeFingerprints, findDuplicates } from "./lib/fingerprint.js";
-import { loadPolicy, evaluatePolicy, determineReviewLevel, recordDailySpend, getDailySpent } from "./lib/policy.js";
+import { loadPolicy, evaluatePolicy, determineReviewLevel, recordDailySpend, tryRecordDailySpend, getDailySpent } from "./lib/policy.js";
 import { validate, CreateProgramSchema, SubmitReportSchema, ReviewReportSchema, ReportQuerySchema, AuditQuerySchema } from "./lib/schemas.js";
 import {
   ALLOWED_SIGNING_CHAINS,
@@ -382,6 +382,17 @@ export function createApp() {
     }
 
     // Step 5: Auto-approve and sign
+    // Atomically reserve the daily budget before signing to prevent race conditions
+    const budgetResult = tryRecordDailySpend(program.id, evaluation.recommendedPayout, policy.dailyLimit);
+    if (!budgetResult.success) {
+      db.prepare("UPDATE reports SET status = 'rejected', reasoning = ?, payout = 0 WHERE id = ?")
+        .run(`POLICY DENIED: Daily limit $${budgetResult.limit} would be exceeded (spent: $${budgetResult.spent})`, reportId);
+      audit({ correlationId: cid, action: "policy_denied", entityType: "report", entityId: reportId, details: { rule: "daily_limit", spent: budgetResult.spent, limit: budgetResult.limit } });
+      const updated = db.prepare("SELECT * FROM reports WHERE id = ?").get(reportId);
+      broadcast("report_evaluated", sanitizeReport(updated));
+      return res.json(sanitizeReport(updated));
+    }
+
     db.prepare("UPDATE reports SET status = 'approved', payout = ?, review_level = 'auto' WHERE id = ?")
       .run(evaluation.recommendedPayout, reportId);
 
@@ -403,8 +414,6 @@ export function createApp() {
         payoutResult.authorizationId, payoutResult.signature, nonce, new Date().toISOString(),
       );
 
-      // Record spend
-      recordDailySpend(program.id, evaluation.recommendedPayout);
       db.prepare("UPDATE programs SET total_authorized = total_authorized + ? WHERE id = ?").run(evaluation.recommendedPayout, program.id);
 
       audit({ correlationId: cid, action: "payout_signed", entityType: "report", entityId: reportId, details: { amount: evaluation.recommendedPayout, txId, authorizationId: payoutResult.authorizationId } });
@@ -461,6 +470,12 @@ export function createApp() {
       return res.status(409).json({ error: `Policy check failed: ${denyReasons}` });
     }
 
+    // Atomically reserve the daily budget before signing to prevent race conditions
+    const budgetResult = tryRecordDailySpend(program.id, payout, policy.dailyLimit);
+    if (!budgetResult.success) {
+      return res.status(409).json({ error: `Daily limit $${budgetResult.limit} would be exceeded (spent: $${budgetResult.spent})` });
+    }
+
     db.prepare("UPDATE reports SET status = 'approved', payout = ?, reviewed_by = ?, reviewed_at = ? WHERE id = ?")
       .run(payout, reviewedBy, now, report.id);
 
@@ -481,7 +496,6 @@ export function createApp() {
         payoutResult.authorizationId, payoutResult.signature, nonce, new Date().toISOString(),
       );
 
-      recordDailySpend(program.id, payout);
       db.prepare("UPDATE programs SET total_authorized = total_authorized + ? WHERE id = ?").run(payout, program.id);
       audit({ correlationId: cid, action: "manual_approve_signed", entityType: "report", entityId: report.id, actor: reviewedBy, details: { payout, txId } });
 
