@@ -30,6 +30,19 @@ export const ReviewReportSchema = z.object({
   adjustedPayout: z.number().nonnegative().optional(),
 });
 
+export const ReportQuerySchema = z.object({
+  status: z.string().optional(),
+  duplicates: z.string().optional(),
+  limit: z.coerce.number().int().positive().max(1000).optional().default(50),
+});
+
+export const AuditQuerySchema = z.object({
+  entity_type: z.string().optional(),
+  entity_id: z.string().optional(),
+  correlation_id: z.string().optional(),
+  limit: z.coerce.number().int().positive().max(1000).optional().default(50),
+});
+
 // Validate and return { success, data, error }
 export function validate(schema, data) {
   const result = schema.safeParse(data);
