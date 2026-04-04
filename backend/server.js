@@ -314,7 +314,7 @@ export function createApp() {
     // Step 1: Duplicate detection
     const fingerprints = generateFingerprints({ title, description });
     storeFingerprints(reportId, fingerprints);
-    const dupResult = findDuplicates(fingerprints, reportId);
+    const dupResult = findDuplicates(fingerprints, reportId, title);
 
     if (dupResult.isDuplicate) {
       db.prepare("UPDATE reports SET status = 'rejected', reasoning = ?, duplicate_of = ?, duplicate_score = ?, evaluated_at = ? WHERE id = ?")

@@ -53,7 +53,7 @@ export function storeFingerprints(reportId, fingerprints) {
 }
 
 // Find potential duplicates — returns { isDuplicate, score, matches }
-export function findDuplicates(fingerprints, excludeReportId = null) {
+export function findDuplicates(fingerprints, excludeReportId = null, currentTitle = "") {
   const db = getDb();
   const matchWeights = {
     title_hash: 0.4,
@@ -84,6 +84,27 @@ export function findDuplicates(fingerprints, excludeReportId = null) {
     }
   }
 
+  // Fuzzy title matching
+  if (currentTitle) {
+    const params = [];
+    let fuzzyQuery = "SELECT id, title FROM reports WHERE created_at > date('now', '-7 days')";
+    if (excludeReportId) {
+      fuzzyQuery += " AND id != ?";
+      params.push(excludeReportId);
+    }
+    const recentReports = db.prepare(fuzzyQuery).all(...params);
+    for (const r of recentReports) {
+      const sim = titleSimilarity(currentTitle, r.title);
+      if (sim > 0.5) {
+        const weight = sim * 0.4; // Max 0.4 bonus
+        const existing = candidateScores.get(r.id) || { score: 0, matches: [] };
+        existing.score += weight;
+        if (!existing.matches.includes("fuzzy_title")) existing.matches.push("fuzzy_title");
+        candidateScores.set(r.id, existing);
+      }
+    }
+  }
+
   if (candidateScores.size === 0) {
     return { isDuplicate: false, isProbable: false, score: 0, matches: [], duplicateOf: null };
   }
@@ -98,8 +119,8 @@ export function findDuplicates(fingerprints, excludeReportId = null) {
     }
   }
 
-  // Normalize score to 0-1 range (max possible ~1.8)
-  const normalizedScore = Math.min(1, bestData.score / 1.2);
+  // Normalize score to 0-1 range (max possible > 2.0 with fuzzy)
+  const normalizedScore = Math.min(1, bestData.score / 1.1);
 
   return {
     isDuplicate: normalizedScore >= 0.8,       // strong match
