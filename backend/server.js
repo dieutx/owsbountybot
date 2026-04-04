@@ -188,7 +188,7 @@ function getProgramStats(programId) {
 
   const dailySpent = getDailySpent(programId);
   const policyConfig = program.policy_config ? JSON.parse(program.policy_config) : {};
-  const evmAccount = program.wallet_accounts ? JSON.parse(program.wallet_accounts).find(a => a.chainId?.startsWith("eip155")) : null;
+  const walletAccounts = program.wallet_accounts ? JSON.parse(program.wallet_accounts).map(a => ({ chainId: a.chainId, address: a.address })) : [];
 
   return {
     id: program.id,
@@ -196,7 +196,7 @@ function getProgramStats(programId) {
     description: program.description,
     wallet: {
       name: program.wallet_name,
-      accounts: evmAccount ? [{ chainId: evmAccount.chainId, address: evmAccount.address }] : [],
+      accounts: walletAccounts,
     },
     policy: policyConfig,
     total_authorized: program.total_authorized,
@@ -666,8 +666,7 @@ export function createApp() {
   app.get("/api/wallet", (req, res) => {
     const wallet = getWalletInfo("bountybot-treasury");
     if (!wallet) return res.status(404).json({ error: "Wallet not found" });
-    const evmAccount = wallet.accounts.find(a => a.chainId?.startsWith("eip155"));
-    res.json({ name: wallet.name, accounts: evmAccount ? [{ chainId: evmAccount.chainId, address: evmAccount.address }] : [] });
+    res.json({ name: wallet.name, accounts: wallet.accounts.map(a => ({ chainId: a.chainId, address: a.address })) });
   });
 
   app.get("/api/transactions", (req, res) => {
