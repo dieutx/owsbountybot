@@ -53,6 +53,10 @@ function connectSSE() {
   evtSource.addEventListener("report_evaluated", (e) => { updateFeedItem(JSON.parse(e.data)); refreshStats(); });
   evtSource.addEventListener("payout_authorized", (e) => { const d = JSON.parse(e.data); updateFeedItem(d.report); refreshStats(); });
   evtSource.addEventListener("program_created", (e) => { updateStats(JSON.parse(e.data)); });
+  evtSource.onerror = () => {
+    // SSE disconnected — refresh feed as fallback
+    setTimeout(() => { loadReports(); refreshStats(); }, 3000);
+  };
 }
 
 function updateStats(data) {
@@ -212,6 +216,9 @@ document.getElementById("reportForm").addEventListener("submit", async (e) => {
       msgEl.className = "form-message error";
       msgEl.hidden = false;
     } else {
+      // Show the result immediately in the feed (don't wait for SSE)
+      addFeedItem(json);
+      refreshStats();
       document.getElementById("reportForm").reset();
       document.querySelector('input[name="severity"][value="high"]').checked = true;
     }
