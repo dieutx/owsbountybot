@@ -1,6 +1,7 @@
 const API = window.location.origin;
 let programInitialized = false;
 let currentFilter = "all";
+let adminToken = "";
 
 function el(tag, attrs = {}, children = []) {
   const node = document.createElement(tag);
@@ -45,6 +46,7 @@ async function init() {
     } catch {}
   }
   connectSSE();
+  setupAdminPanel();
 }
 
 let sseConnected = false;
@@ -250,7 +252,63 @@ function buildFeedItem(report) {
     ]));
   }
 
-  if (report.status === "pending_review" || report.status === "probable_duplicate") {
+  if ((report.status === "pending_review" || report.status === "probable_duplicate") && adminToken) {
+    const actions = el("div", { className: "review-actions" });
+    actions.appendChild(el("span", { style: { fontSize: "11px", color: "var(--orange)" }, textContent: `Awaiting ${report.review_level || "manual"} review` }));
+
+    const btnRow = el("div", { className: "review-btn-row" });
+
+    const approveBtn = el("button", { className: "review-btn approve", textContent: "Approve" });
+    approveBtn.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      approveBtn.disabled = true;
+      try {
+        const res = await fetch(`${API}/api/report/${report.id}/review`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "x-admin-token": adminToken },
+          body: JSON.stringify({ action: "approve", reviewedBy: "admin" }),
+        });
+        const json = await res.json();
+        if (!res.ok) {
+          showToast(json.error || "Approval failed", "warning");
+        } else {
+          updateFeedItem(json);
+          refreshStats();
+          showToast(`Approved: $${json.payout} USDC`, "success");
+        }
+      } catch { showToast("Network error", "warning"); }
+      approveBtn.disabled = false;
+    });
+
+    const rejectBtn = el("button", { className: "review-btn reject", textContent: "Reject" });
+    rejectBtn.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      const reason = prompt("Rejection reason:");
+      if (!reason) return;
+      rejectBtn.disabled = true;
+      try {
+        const res = await fetch(`${API}/api/report/${report.id}/review`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "x-admin-token": adminToken },
+          body: JSON.stringify({ action: "reject", reviewedBy: "admin", reason }),
+        });
+        const json = await res.json();
+        if (!res.ok) {
+          showToast(json.error || "Rejection failed", "warning");
+        } else {
+          updateFeedItem(json);
+          refreshStats();
+          showToast("Report rejected", "info");
+        }
+      } catch { showToast("Network error", "warning"); }
+      rejectBtn.disabled = false;
+    });
+
+    btnRow.appendChild(approveBtn);
+    btnRow.appendChild(rejectBtn);
+    actions.appendChild(btnRow);
+    item.appendChild(actions);
+  } else if (report.status === "pending_review" || report.status === "probable_duplicate") {
     item.appendChild(el("div", { className: "review-actions" }, [
       el("span", { style: { fontSize: "11px", color: "var(--orange)" }, textContent: `Awaiting ${report.review_level || "manual"} review` }),
     ]));
@@ -265,6 +323,33 @@ function setFilter(filter) {
     btn.classList.toggle("active", btn.dataset.filter === filter);
   });
   loadReports(true); // force rebuild on filter change
+}
+
+function showToast(message, type = "info") {
+  let container = document.getElementById("toastContainer");
+  if (!container) {
+    container = el("div", { id: "toastContainer", className: "toast-container" });
+    document.body.appendChild(container);
+  }
+  const toast = el("div", { className: `toast toast-${type}`, textContent: message });
+  container.appendChild(toast);
+  setTimeout(() => { toast.classList.add("toast-exit"); setTimeout(() => toast.remove(), 300); }, 4000);
+}
+
+function setupAdminPanel() {
+  const header = document.querySelector(".feed-header-right");
+
+  const adminBtn = el("button", { className: "admin-toggle-btn", textContent: "Admin" });
+  header.insertBefore(adminBtn, header.firstChild);
+
+  adminBtn.addEventListener("click", () => {
+    const current = adminToken;
+    const token = prompt("Enter admin token (leave empty to exit admin mode):", current);
+    if (token === null) return;
+    adminToken = token.trim();
+    adminBtn.classList.toggle("active", !!adminToken);
+    loadReports(true);
+  });
 }
 
 document.getElementById("reportForm").addEventListener("submit", async (e) => {
