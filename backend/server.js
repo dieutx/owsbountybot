@@ -5,11 +5,11 @@ import { fileURLToPath } from "url";
 import { dirname, join } from "path";
 import { getDb, closeDb } from "./db/database.js";
 import { generateId, correlationId } from "./lib/ids.js";
-import { audit } from "./lib/audit.js";
+import { audit, getAuditLog } from "./lib/audit.js";
 import { evaluateReport } from "./evaluator.js";
 import { generateFingerprints, storeFingerprints, findDuplicates } from "./lib/fingerprint.js";
 import { loadPolicy, evaluatePolicy, determineReviewLevel, recordDailySpend, getDailySpent } from "./lib/policy.js";
-import { validate, CreateProgramSchema, SubmitReportSchema, ReviewReportSchema } from "./lib/schemas.js";
+import { validate, CreateProgramSchema, SubmitReportSchema, ReviewReportSchema, ReportQuerySchema, AuditQuerySchema } from "./lib/schemas.js";
 import {
   ALLOWED_SIGNING_CHAINS,
   normalizeChain,
@@ -429,7 +429,7 @@ export function createApp() {
     const now = new Date().toISOString();
 
     if (action === "reject") {
-      db.prepare("UPDATE reports SET status = 'rejected', reviewed_by = ?, reviewed_at = ?, reasoning = reasoning || ? WHERE id = ?")
+      db.prepare("UPDATE reports SET status = 'rejected', reviewed_by = ?, reviewed_at = ?, reasoning = COALESCE(reasoning, '') || ? WHERE id = ?")
         .run(reviewedBy, now, ` Manual review: rejected. ${reason || ""}`, report.id);
       audit({ correlationId: cid, action: "manual_reject", entityType: "report", entityId: report.id, actor: reviewedBy });
       const updated = db.prepare("SELECT * FROM reports WHERE id = ?").get(report.id);
@@ -479,14 +479,16 @@ export function createApp() {
   app.get("/api/reports", (req, res) => {
     const program = getActiveProgram();
     if (!program) return res.json([]);
-    const { status, duplicates, limit = 50 } = req.query;
+    const v = validate(ReportQuerySchema, req.query);
+    if (!v.success) return res.status(400).json({ error: v.error });
+    const { status, duplicates, limit } = v.data;
     let rows;
     if (duplicates) {
-      rows = getDb().prepare("SELECT * FROM reports WHERE program_id = ? AND duplicate_of IS NOT NULL ORDER BY created_at DESC LIMIT ?").all(program.id, Number(limit));
+      rows = getDb().prepare("SELECT * FROM reports WHERE program_id = ? AND duplicate_of IS NOT NULL ORDER BY created_at DESC LIMIT ?").all(program.id, limit);
     } else if (status) {
-      rows = getDb().prepare("SELECT * FROM reports WHERE program_id = ? AND status = ? ORDER BY created_at DESC LIMIT ?").all(program.id, status, Number(limit));
+      rows = getDb().prepare("SELECT * FROM reports WHERE program_id = ? AND status = ? ORDER BY created_at DESC LIMIT ?").all(program.id, status, limit);
     } else {
-      rows = getDb().prepare("SELECT * FROM reports WHERE program_id = ? ORDER BY created_at DESC LIMIT ?").all(program.id, Number(limit));
+      rows = getDb().prepare("SELECT * FROM reports WHERE program_id = ? ORDER BY created_at DESC LIMIT ?").all(program.id, limit);
     }
     res.json(rows.map(sanitizeReport));
   });
@@ -521,8 +523,10 @@ export function createApp() {
   });
 
   app.get("/api/audit", (req, res) => {
-    const { entity_type, entity_id, correlation_id, limit = 50 } = req.query;
-    const rows = getDb().prepare("SELECT * FROM audit_log ORDER BY id DESC LIMIT ?").all(Number(limit));
+    const v = validate(AuditQuerySchema, req.query);
+    if (!v.success) return res.status(400).json({ error: v.error });
+    const { entity_type, entity_id, correlation_id, limit } = v.data;
+    const rows = getAuditLog({ entityType: entity_type, entityId: entity_id, correlationId: correlation_id, limit });
     res.json(rows);
   });
 

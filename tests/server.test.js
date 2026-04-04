@@ -318,3 +318,35 @@ test("Zod validation rejects malformed input", async () => {
     sb.cleanup();
   }
 });
+
+test("GET query parameter validation rejects invalid limit", async () => {
+  const sb = sandbox();
+  const { server, base } = await startServer(sb);
+  try {
+    await createProgram(base);
+    const { status, json } = await api(base, "/api/reports?limit=foo");
+    assert.equal(status, 400);
+    assert.match(json.error, /Expected number/);
+  } finally {
+    await stop(server);
+    sb.cleanup();
+  }
+});
+
+test("GET audit endpoint respects parameters", async () => {
+  const sb = sandbox();
+  const { server, base } = await startServer(sb);
+  try {
+    await createProgram(base);
+    // This creates an audit log for program creation
+    const { json: logs } = await api(base, "/api/audit?entity_type=program");
+    assert.ok(logs.length > 0);
+    assert.ok(logs.every(log => log.entity_type === "program"));
+
+    const { json: emptyLogs } = await api(base, "/api/audit?entity_type=nonexistent");
+    assert.equal(emptyLogs.length, 0);
+  } finally {
+    await stop(server);
+    sb.cleanup();
+  }
+});
