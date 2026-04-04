@@ -54,6 +54,8 @@ Researchers submit bug reports. The system evaluates quality, detects duplicates
 - **CSV export** — `GET /api/reports/export` (admin-only) downloads all reports as CSV
 - **Health check** — `GET /api/health` for load balancers and monitoring
 - **Retry signing** — `POST /api/report/:id/retry-sign` for reports stuck in approved state
+- **Multi-chain wallets** — Supports EVM, Solana, Bitcoin, Tron, Cosmos with auto-detection from wallet address format
+- **Cross-chain detection** — Flags payouts where recipient chain differs from treasury source chain, tracks bridge status (pending/bridging/bridged/failed)
 - **Zod validation** — All inputs validated with structured error responses
 - **Security hardened** — CORS, CSP, rate limiting, constant-time token comparison, signature redaction
 
@@ -77,6 +79,7 @@ npm test        # 24 integration tests
 | `BOUNTYBOT_DB_PATH` | `data/bountybot.db` | SQLite database location |
 | `BOUNTYBOT_EVALUATION_DELAY_MS` | `1500` | Evaluation delay (set to `0` in tests) |
 | `CORS_ORIGIN` | `https://owsbountybot.shelmail.xyz` | Allowed CORS origin |
+| `BOUNTYBOT_SOURCE_CHAIN` | `evm` | Treasury funding chain (cross-chain payouts flagged for bridging) |
 | `OWS_VAULT_PATH` | _(OWS default)_ | Custom OWS vault location |
 
 ## Architecture
@@ -108,6 +111,7 @@ npm test        # 24 integration tests
 │       ├── audit.js         # Append-only audit logging
 │       ├── fingerprint.js   # Duplicate detection engine
 │       ├── ids.js           # ID + correlation ID generation
+│       ├── bridge.js        # Cross-chain detection and bridge routing
 │       ├── policy.js        # Composable policy rule engine
 │       └── schemas.js       # Zod validation schemas
 ├── frontend/                # Vanilla HTML/CSS/JS dashboard
@@ -155,6 +159,32 @@ pending → evaluating → rejected
 | High | $40 – $80 | Above $50 requires review |
 | Medium | $15 – $40 | Auto if quality sufficient |
 | Low | $5 – $15 | Auto if quality sufficient |
+
+## Supported Chains
+
+| Chain | Wallet Format | Auto-Detect | Aliases |
+|-------|--------------|-------------|---------|
+| EVM (Ethereum/Base/Polygon) | `0x` + 40 hex | Yes | `eth`, `base`, `polygon` |
+| Solana | Base58, 32-44 chars | Yes | `sol` |
+| Bitcoin | `bc1...` or `1.../3...` | Yes | `btc` |
+| Tron | `T` + 33 chars | Yes | `trx` |
+| Cosmos | `cosmos1` + 38 chars | Yes | `atom` |
+
+### Cross-Chain Payouts
+
+When a researcher submits a wallet on a different chain than the treasury's funding chain (default: EVM), the system:
+
+1. **Auto-detects** the recipient chain from wallet format
+2. **Flags** the transaction as `needs_bridge: true`
+3. **Tracks** bridge lifecycle: `pending → bridging → bridged → failed`
+4. **Shows** a "cross-chain" badge in the dashboard
+
+```
+Treasury (EVM) → Researcher (Solana) = cross-chain, bridge pending
+Treasury (EVM) → Researcher (EVM)    = same chain, direct payout
+```
+
+Future integration path: Circle CCTP for USDC bridging (structure ready in `backend/lib/bridge.js`).
 
 ## OWS Integration
 

@@ -32,6 +32,7 @@ Tests use Node's built-in test runner with sandboxed temp directories. Each test
 | `backend/lib/policy.js` | Composable spending policy rules |
 | `backend/lib/audit.js` | Append-only audit logging |
 | `backend/lib/schemas.js` | Zod input validation schemas |
+| `backend/lib/bridge.js` | Cross-chain detection and bridge routing |
 | `backend/lib/ids.js` | ID generation utilities |
 | `frontend/` | Static dashboard (vanilla JS) |
 | `tests/` | Integration tests |
