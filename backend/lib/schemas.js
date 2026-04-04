@@ -11,6 +11,23 @@ export const CreateProgramSchema = z.object({
     manual: z.number().nonnegative().optional(),
     admin: z.number().nonnegative().optional(),
   }).optional(),
+}).superRefine((data, ctx) => {
+  const thresholds = data.reviewThresholds;
+  if (!thresholds) return;
+  if (thresholds.auto != null && thresholds.manual != null && thresholds.manual < thresholds.auto) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["reviewThresholds", "manual"],
+      message: "manual threshold must be greater than or equal to auto",
+    });
+  }
+  if (thresholds.manual != null && thresholds.admin != null && thresholds.admin < thresholds.manual) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["reviewThresholds", "admin"],
+      message: "admin threshold must be greater than or equal to manual",
+    });
+  }
 });
 
 export const SubmitReportSchema = z.object({
@@ -28,6 +45,21 @@ export const ReviewReportSchema = z.object({
   reviewedBy: z.string().min(1).max(100).optional().default("admin"),
   reason: z.string().max(1000).optional(),
   adjustedPayout: z.number().nonnegative().optional(),
+}).superRefine((data, ctx) => {
+  if (data.action === "approve" && data.adjustedPayout != null && data.adjustedPayout <= 0) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["adjustedPayout"],
+      message: "adjustedPayout must be greater than zero when approving",
+    });
+  }
+  if (data.action === "reject" && !data.reason?.trim()) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["reason"],
+      message: "reason is required when rejecting",
+    });
+  }
 });
 
 // Validate and return { success, data, error }

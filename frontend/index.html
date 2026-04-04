@@ -40,7 +40,7 @@
       </div>
       <div class="stat">
         <span class="stat-value" id="walletAddr">—</span>
-        <span class="stat-label">Treasury (EVM)</span>
+        <span class="stat-label">Treasury</span>
       </div>
     </div>
 
@@ -51,6 +51,13 @@
         <h2>Submit Bug Report</h2>
         <div id="formMessage" class="form-message" hidden></div>
         <form id="reportForm">
+          <div class="field">
+            <label>Chain</label>
+            <select id="reportChain">
+              <option value="evm" selected>EVM</option>
+              <option value="solana">Solana</option>
+            </select>
+          </div>
           <div class="field">
             <label>Title</label>
             <input type="text" id="bugTitle" placeholder="SQL Injection in /api/users endpoint" required>
@@ -72,11 +79,35 @@
             <label>Your Wallet Address</label>
             <input type="text" id="reporterWallet" placeholder="0x742d35Cc6634C0532925a3b844Bc9e7595f..." required>
           </div>
+          <div class="field">
+            <label>Affected Asset (optional)</label>
+            <input type="text" id="affectedAsset" placeholder="/api/users">
+          </div>
+          <div class="field">
+            <label>Vulnerability Class (optional)</label>
+            <input type="text" id="vulnClass" placeholder="sqli">
+          </div>
           <button type="submit" id="submitBtn">
             <span class="btn-text">Submit Report</span>
             <span class="btn-loading" style="display:none">Evaluating...</span>
           </button>
         </form>
+
+        <div class="admin-panel">
+          <div class="admin-header">
+            <h3>Admin Controls</h3>
+            <span class="admin-note">Needed for review and reset</span>
+          </div>
+          <div id="adminMessage" class="form-message" hidden></div>
+          <div class="field">
+            <label>Admin Token</label>
+            <input type="password" id="adminToken" placeholder="x-admin-token">
+          </div>
+          <div class="field">
+            <label>Reviewer Name</label>
+            <input type="text" id="reviewerName" value="admin" placeholder="admin">
+          </div>
+        </div>
 
         <!-- Quick Demo Buttons -->
         <div class="demo-buttons">
@@ -107,6 +138,28 @@
         <div id="feed" class="feed">
           <div class="feed-empty">
             <p>No reports yet. Submit a bug to see the agent in action!</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="insights">
+      <div class="panel insights-panel">
+        <h2>Policy & Treasury</h2>
+        <div id="policySummary" class="detail-list"></div>
+        <div class="treasury-section">
+          <div class="section-label">Treasury Accounts</div>
+          <div id="treasuryAccounts" class="account-list"></div>
+        </div>
+      </div>
+      <div class="panel insights-panel">
+        <div class="insights-header">
+          <h2>Audit Log</h2>
+          <button class="filter-btn" id="refreshAuditBtn">Refresh</button>
+        </div>
+        <div id="auditFeed" class="audit-feed">
+          <div class="feed-empty">
+            <p>No audit entries yet.</p>
           </div>
         </div>
       </div>

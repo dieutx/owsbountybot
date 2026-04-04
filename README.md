@@ -43,12 +43,14 @@ Researchers submit bug reports. The system evaluates quality, detects duplicates
 - **Probable duplicate** state — Ambiguous cases flagged for review instead of hard-rejected
 - **Composable policy engine** — Per-severity caps, daily budget, per-reporter limits, chain allowlists, cooldowns
 - **Multi-step review** — Auto-approve (low value), manual review (medium), admin review (high)
-- **Manual review API** — Approve or reject pending reports with adjusted payouts
+- **Manual review controls** — Approve or reject pending reports with adjusted payouts behind admin-token auth
 - **Append-only audit log** — Every action recorded with correlation IDs
 - **SQLite persistence** — WAL mode, proper schema with indexes, survives restarts
 - **Real-time dashboard** — SSE feed with status filters (All / Signed / Pending / Rejected / Duplicates), silent background sync with smart diff (only changed items update), live connection indicator
+- **Governance visibility** — Policy summary, treasury accounts, audit trail, and in-dashboard manual review controls
 - **Demo mode** — 16 randomized sample reports across 3 quality tiers (High / Medium / Low / Random), different each click
 - **Reset** — One-click feed reset clears all reports, transactions, and budget counters
+- **Multi-chain submissions** — Demo form supports EVM and Solana wallet flows end-to-end
 - **Zod validation** — All inputs validated with structured error responses
 - **Security hardened** — CORS, CSP, rate limiting, constant-time token comparison, signature redaction
 
@@ -60,7 +62,7 @@ cd owsbountybot
 npm install
 npm run setup   # Create OWS wallet, policy, agent key
 npm start       # http://localhost:4000
-npm test        # 15 integration tests
+npm test        # integration tests
 ```
 
 ## Environment Variables
@@ -68,7 +70,7 @@ npm test        # 15 integration tests
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `PORT` | `4000` | Server port |
-| `BOUNTYBOT_ADMIN_TOKEN` | _(none)_ | Required to reset an existing program |
+| `BOUNTYBOT_ADMIN_TOKEN` | _(none)_ | Required for manual review and reset actions |
 | `BOUNTYBOT_DB_PATH` | `data/bountybot.db` | SQLite database location |
 | `BOUNTYBOT_EVALUATION_DELAY_MS` | `1500` | Evaluation delay (set to `0` in tests) |
 | `CORS_ORIGIN` | `https://owsbountybot.shelmail.xyz` | Allowed CORS origin |
@@ -119,13 +121,13 @@ npm test        # 15 integration tests
 | `/api/bounty` | GET | Program stats and spending counters |
 | `/api/report/submit` | POST | Submit a bug report |
 | `/api/report/:id` | GET | Report detail with audit trail |
-| `/api/report/:id/review` | POST | Approve or reject a pending report |
+| `/api/report/:id/review` | POST | Approve or reject a pending report (`x-admin-token` required) |
 | `/api/reports` | GET | List reports (`?status=`, `?duplicates=1`) |
-| `/api/reset` | POST | Clear all reports, transactions, and budgets |
+| `/api/reset` | POST | Clear all reports, transactions, and budgets (`x-admin-token` required) |
 | `/api/wallet` | GET | Treasury wallet address (EVM only) |
 | `/api/transactions` | GET | Payout authorization history |
 | `/api/policy` | GET | Active policy config + daily budget |
-| `/api/audit` | GET | Audit log entries |
+| `/api/audit` | GET | Audit log entries (`?entity_type=`, `?entity_id=`, `?correlation_id=`) |
 | `/api/events` | GET | SSE stream for real-time updates |
 
 ### Report Lifecycle

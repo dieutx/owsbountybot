@@ -23,13 +23,13 @@ export function generateFingerprints(report) {
   fps.push({ type: "desc_hash", value: sha256(`${normTitle}\0${normDesc}`) });
 
   // 3. Vulnerability class (if detected)
-  const vulnClass = detectVulnClass(report.title + " " + report.description);
+  const vulnClass = report.vulnClass || detectVulnClass(report.title + " " + report.description);
   if (vulnClass) {
     fps.push({ type: "vuln_type", value: vulnClass });
   }
 
   // 4. Affected asset/endpoint
-  const asset = extractAffectedAsset(report.title + " " + report.description);
+  const asset = normalize(report.affectedAsset || extractAffectedAsset(report.title + " " + report.description));
   if (asset) {
     fps.push({ type: "asset", value: sha256(asset) });
   }
@@ -53,7 +53,7 @@ export function storeFingerprints(reportId, fingerprints) {
 }
 
 // Find potential duplicates — returns { isDuplicate, score, matches }
-export function findDuplicates(fingerprints, excludeReportId = null) {
+export function findDuplicates({ fingerprints, title = "", programId = null, excludeReportId = null }) {
   const db = getDb();
   const matchWeights = {
     title_hash: 0.4,
@@ -67,30 +67,58 @@ export function findDuplicates(fingerprints, excludeReportId = null) {
   const candidateScores = new Map(); // reportId -> { score, matches }
 
   for (const fp of fingerprints) {
-    let query = "SELECT DISTINCT report_id FROM fingerprints WHERE type = ? AND value = ?";
+    let query = "SELECT DISTINCT f.report_id FROM fingerprints f";
+    const clauses = ["f.type = ?", "f.value = ?"];
     const params = [fp.type, fp.value];
+    if (programId) {
+      query += " INNER JOIN reports r ON r.id = f.report_id";
+      clauses.push("r.program_id = ?");
+      params.push(programId);
+    }
     if (excludeReportId) {
-      query += " AND report_id != ?";
+      clauses.push("f.report_id != ?");
       params.push(excludeReportId);
     }
+    query += ` WHERE ${clauses.join(" AND ")}`;
     const matches = db.prepare(query).all(...params);
     const weight = matchWeights[fp.type] || 0.1;
 
     for (const match of matches) {
-      const existing = candidateScores.get(match.report_id) || { score: 0, matches: [] };
+      const existing = candidateScores.get(match.report_id) || { score: 0, matches: [], titleSimilarity: 0 };
       existing.score += weight;
       existing.matches.push(fp.type);
       candidateScores.set(match.report_id, existing);
     }
   }
 
+  if (title && programId) {
+    const candidateRows = db.prepare(
+      "SELECT id, title FROM reports WHERE program_id = ? AND id != ? ORDER BY created_at DESC LIMIT 100"
+    ).all(programId, excludeReportId || "");
+
+    for (const candidate of candidateRows) {
+      const similarity = titleSimilarity(title, candidate.title);
+      let weight = 0;
+      if (similarity >= 0.9) weight = 0.55;
+      else if (similarity >= 0.8) weight = 0.45;
+      else if (similarity >= 0.7) weight = 0.2;
+      if (weight === 0) continue;
+
+      const existing = candidateScores.get(candidate.id) || { score: 0, matches: [], titleSimilarity: 0 };
+      existing.score += weight;
+      existing.titleSimilarity = Math.max(existing.titleSimilarity || 0, similarity);
+      existing.matches.push(`title_similarity:${Math.round(similarity * 100)}`);
+      candidateScores.set(candidate.id, existing);
+    }
+  }
+
   if (candidateScores.size === 0) {
-    return { isDuplicate: false, isProbable: false, score: 0, matches: [], duplicateOf: null };
+    return { isDuplicate: false, isProbable: false, score: 0, matches: [], duplicateOf: null, titleSimilarity: 0 };
   }
 
   // Find best match
   let bestId = null;
-  let bestData = { score: 0, matches: [] };
+  let bestData = { score: 0, matches: [], titleSimilarity: 0 };
   for (const [reportId, data] of candidateScores) {
     if (data.score > bestData.score) {
       bestId = reportId;
@@ -107,6 +135,7 @@ export function findDuplicates(fingerprints, excludeReportId = null) {
     score: Math.round(normalizedScore * 100) / 100,
     matches: bestData.matches,
     duplicateOf: bestId,
+    titleSimilarity: Math.round((bestData.titleSimilarity || 0) * 100) / 100,
   };
 }
 

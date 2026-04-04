@@ -4,6 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
+const ADMIN_TOKEN = "test-secret";
+
 function sandbox() {
   const root = mkdtempSync(join(tmpdir(), "owsbountybot-"));
   return {
@@ -69,6 +71,21 @@ async function submitReport(base, overrides = {}) {
   });
 }
 
+async function reviewReport(base, id, body, headers = {}) {
+  return api(base, `/api/report/${id}/review`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(body),
+  });
+}
+
+async function resetProgram(base, headers = {}) {
+  return api(base, "/api/reset", {
+    method: "POST",
+    headers,
+  });
+}
+
 // === Tests ===
 
 test("full flow: submit -> evaluate -> pending_review (high value auto threshold)", async () => {
@@ -100,6 +117,52 @@ test("low value report auto-approves and signs", async () => {
     assert.equal(json.status, "signed");
     assert.ok(json.payout > 0);
     assert.ok(json.authorization_id);
+  } finally {
+    await stop(server);
+    sb.cleanup();
+  }
+});
+
+test("custom review thresholds are enforced during evaluation", async () => {
+  const sb = sandbox();
+  const { server, base } = await startServer(sb);
+  try {
+    await createProgram(base, { reviewThresholds: { auto: 5, manual: 20, admin: 1000 } });
+    const { status, json } = await submitReport(base, { severity: "low" });
+    assert.equal(status, 200);
+    assert.equal(json.status, "pending_review");
+    assert.equal(json.review_level, "manual");
+    assert.ok(json.payout > 5);
+  } finally {
+    await stop(server);
+    sb.cleanup();
+  }
+});
+
+test("custom daily limit is enforced for signed payouts", async () => {
+  const sb = sandbox();
+  const { server, base } = await startServer(sb);
+  try {
+    await createProgram(base, {
+      dailyLimit: 20,
+      reviewThresholds: { auto: 200, manual: 500, admin: 1000 },
+    });
+
+    const { status: firstStatus, json: first } = await submitReport(base, { severity: "low" });
+    assert.equal(firstStatus, 200);
+    assert.equal(first.status, "signed");
+    assert.ok(first.payout > 0);
+
+    const { status: secondStatus, json: second } = await submitReport(base, {
+      title: "Stored XSS in profile bio",
+      severity: "low",
+      description: "Steps to reproduce: update profile bio with payload. Impact: attacker can run script in another user's browser. Proof of concept: save <script>alert(1)</script> and view profile. Fix: escape output in the profile renderer.",
+      reporterWallet: "0x742d35Cc6634C0532925a3b844Bc9e7595f2bD39",
+    });
+    assert.equal(secondStatus, 200);
+    assert.equal(second.status, "rejected");
+    assert.match(second.reasoning, /POLICY DENIED/);
+    assert.match(second.reasoning, /Daily limit/);
   } finally {
     await stop(server);
     sb.cleanup();
@@ -143,16 +206,14 @@ test("duplicate detection rejects identical reports", async () => {
 
 test("manual review endpoint approves pending report", async () => {
   const sb = sandbox();
+  process.env.BOUNTYBOT_ADMIN_TOKEN = ADMIN_TOKEN;
   const { server, base } = await startServer(sb);
   try {
     await createProgram(base);
     const { json: report } = await submitReport(base);
     assert.equal(report.status, "pending_review");
 
-    const { json: reviewed } = await api(base, `/api/report/${report.id}/review`, {
-      method: "POST",
-      body: JSON.stringify({ action: "approve", reviewedBy: "admin" }),
-    });
+    const { json: reviewed } = await reviewReport(base, report.id, { action: "approve", reviewedBy: "admin" }, { "x-admin-token": ADMIN_TOKEN });
     assert.equal(reviewed.status, "signed");
     assert.ok(reviewed.payout > 0);
   } finally {
@@ -163,15 +224,64 @@ test("manual review endpoint approves pending report", async () => {
 
 test("manual review endpoint rejects pending report", async () => {
   const sb = sandbox();
+  process.env.BOUNTYBOT_ADMIN_TOKEN = ADMIN_TOKEN;
   const { server, base } = await startServer(sb);
   try {
     await createProgram(base);
     const { json: report } = await submitReport(base);
-    const { json: reviewed } = await api(base, `/api/report/${report.id}/review`, {
-      method: "POST",
-      body: JSON.stringify({ action: "reject", reason: "Not a real vulnerability" }),
-    });
+    const { json: reviewed } = await reviewReport(
+      base,
+      report.id,
+      { action: "reject", reason: "Not a real vulnerability" },
+      { "x-admin-token": ADMIN_TOKEN },
+    );
     assert.equal(reviewed.status, "rejected");
+  } finally {
+    await stop(server);
+    sb.cleanup();
+  }
+});
+
+test("manual review requires admin token", async () => {
+  const sb = sandbox();
+  process.env.BOUNTYBOT_ADMIN_TOKEN = ADMIN_TOKEN;
+  const { server, base } = await startServer(sb);
+  try {
+    await createProgram(base);
+    const { json: report } = await submitReport(base);
+    const { status, json } = await reviewReport(base, report.id, { action: "approve" });
+    assert.equal(status, 403);
+    assert.match(json.error, /Invalid admin token/);
+  } finally {
+    await stop(server);
+    sb.cleanup();
+  }
+});
+
+test("manual review approval is re-checked against policy", async () => {
+  const sb = sandbox();
+  process.env.BOUNTYBOT_ADMIN_TOKEN = ADMIN_TOKEN;
+  const { server, base } = await startServer(sb);
+  try {
+    await createProgram(base, {
+      maxPerBug: 50,
+      reviewThresholds: { auto: 0, manual: 1000, admin: 2000 },
+    });
+    const { json: report } = await submitReport(base, {
+      title: "Medium severity auth bypass report",
+      severity: "medium",
+      description: "Steps to reproduce: trigger auth bypass. Impact: attacker can impersonate another account. Proof of concept included. Recommended fix: verify authorization checks on every privileged endpoint.",
+    });
+    assert.equal(report.status, "pending_review");
+
+    const { status, json } = await reviewReport(
+      base,
+      report.id,
+      { action: "approve", adjustedPayout: 75 },
+      { "x-admin-token": ADMIN_TOKEN },
+    );
+    assert.equal(status, 409);
+    assert.match(json.error, /Policy denied manual approval/);
   } finally {
     await stop(server);
     sb.cleanup();
@@ -234,13 +344,49 @@ test("program reset requires admin token", async () => {
 
 test("program reset works with admin token", async () => {
   const sb = sandbox();
-  process.env.BOUNTYBOT_ADMIN_TOKEN = "test-secret";
+  process.env.BOUNTYBOT_ADMIN_TOKEN = ADMIN_TOKEN;
   const { server, base } = await startServer(sb);
   try {
     await createProgram(base);
-    const { status, json } = await createProgram(base, { name: "New Program" }, { "x-admin-token": "test-secret" });
+    const { status, json } = await createProgram(base, { name: "New Program" }, { "x-admin-token": ADMIN_TOKEN });
     assert.equal(status, 200);
     assert.equal(json.name, "New Program");
+  } finally {
+    await stop(server);
+    sb.cleanup();
+  }
+});
+
+test("reset endpoint requires admin token", async () => {
+  const sb = sandbox();
+  process.env.BOUNTYBOT_ADMIN_TOKEN = ADMIN_TOKEN;
+  const { server, base } = await startServer(sb);
+  try {
+    await createProgram(base);
+    const { status, json } = await resetProgram(base);
+    assert.equal(status, 403);
+    assert.match(json.error, /Invalid admin token/);
+  } finally {
+    await stop(server);
+    sb.cleanup();
+  }
+});
+
+test("reset endpoint clears reports with admin token", async () => {
+  const sb = sandbox();
+  process.env.BOUNTYBOT_ADMIN_TOKEN = ADMIN_TOKEN;
+  const { server, base } = await startServer(sb);
+  try {
+    await createProgram(base);
+    await submitReport(base);
+    const before = await api(base, "/api/reports");
+    assert.ok(before.json.length >= 1);
+
+    const { status } = await resetProgram(base, { "x-admin-token": ADMIN_TOKEN });
+    assert.equal(status, 200);
+
+    const after = await api(base, "/api/reports");
+    assert.equal(after.json.length, 0);
   } finally {
     await stop(server);
     sb.cleanup();
@@ -283,6 +429,26 @@ test("report detail endpoint includes audit trail", async () => {
   }
 });
 
+test("audit endpoint applies entity filters", async () => {
+  const sb = sandbox();
+  const { server, base } = await startServer(sb);
+  try {
+    const { json: program } = await createProgram(base);
+    const { json: report } = await submitReport(base);
+
+    const { json } = await api(base, `/api/audit?entity_type=report&entity_id=${report.id}&limit=5`);
+    assert.ok(json.length > 0);
+    assert.ok(json.every(entry => entry.entity_type === "report" && entry.entity_id === report.id));
+
+    const { json: programAudit } = await api(base, `/api/audit?entity_type=program&entity_id=${program.id}&limit=5`);
+    assert.ok(programAudit.length > 0);
+    assert.ok(programAudit.every(entry => entry.entity_type === "program" && entry.entity_id === program.id));
+  } finally {
+    await stop(server);
+    sb.cleanup();
+  }
+});
+
 test("reports endpoint supports status filter", async () => {
   const sb = sandbox();
   const { server, base } = await startServer(sb);
@@ -296,6 +462,56 @@ test("reports endpoint supports status filter", async () => {
 
     const { json: rejected } = await api(base, "/api/reports?status=rejected");
     assert.ok(rejected.every(r => r.status === "rejected"));
+  } finally {
+    await stop(server);
+    sb.cleanup();
+  }
+});
+
+test("allowedChains on the program policy is enforced", async () => {
+  const sb = sandbox();
+  const { server, base } = await startServer(sb);
+  try {
+    await createProgram(base, {
+      allowedChains: ["solana"],
+      reviewThresholds: { auto: 200, manual: 500, admin: 1000 },
+    });
+
+    const { status, json } = await submitReport(base, { severity: "low" });
+    assert.equal(status, 200);
+    assert.equal(json.status, "rejected");
+    assert.match(json.reasoning, /Chain "evm" not in allowed list/);
+  } finally {
+    await stop(server);
+    sb.cleanup();
+  }
+});
+
+test("similar titles are flagged by duplicate detection", async () => {
+  const sb = sandbox();
+  const { server, base } = await startServer(sb);
+  try {
+    await createProgram(base);
+    const first = await submitReport(base, {
+      title: "Authentication bypass in login flow",
+      severity: "high",
+      description: "Steps to reproduce: trigger the login flow with a crafted session token. Impact: attacker can take over any account. Proof of concept included. Recommended fix: enforce authorization checks before session upgrade.",
+      affectedAsset: "/login",
+      vulnClass: "auth_bypass",
+    });
+    assert.equal(first.status, 200);
+
+    const { status, json } = await submitReport(base, {
+      title: "Authentication bypass in the login flow issue",
+      severity: "high",
+      description: "Steps to reproduce: replay a crafted session during login. Impact: attacker can impersonate another user. Proof of concept included. Recommended fix: verify auth context before issuing a session.",
+      reporterWallet: "0x742d35Cc6634C0532925a3b844Bc9e7595f2bD39",
+      affectedAsset: "/login",
+      vulnClass: "auth_bypass",
+    });
+    assert.equal(status, 200);
+    assert.ok(["probable_duplicate", "rejected"].includes(json.status));
+    assert.ok(json.duplicate_of);
   } finally {
     await stop(server);
     sb.cleanup();

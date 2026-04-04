@@ -115,7 +115,7 @@ header { text-align: center; padding: 32px 0 24px; }
 /* Form */
 .field { margin-bottom: 16px; }
 .field label { display: block; font-size: 12px; color: var(--text-dim); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; }
-.field input, .field textarea {
+.field input, .field textarea, .field select {
   width: 100%;
   background: var(--surface2);
   border: 1px solid var(--border);
@@ -127,7 +127,7 @@ header { text-align: center; padding: 32px 0 24px; }
   outline: none;
   transition: border-color 0.2s;
 }
-.field input:focus, .field textarea:focus { border-color: var(--accent); }
+.field input:focus, .field textarea:focus, .field select:focus { border-color: var(--accent); }
 .field textarea { resize: vertical; }
 
 .severity-select { display: flex; gap: 8px; }
@@ -165,6 +165,27 @@ button[type="submit"] {
 button[type="submit"]:hover { opacity: 0.9; }
 button[type="submit"]:active { transform: scale(0.98); }
 button[type="submit"]:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.admin-panel {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+.admin-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+.admin-header h3 {
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+}
+.admin-note {
+  font-size: 11px;
+  color: var(--text-dim);
+}
 
 /* Demo Buttons */
 .demo-buttons { margin-top: 20px; border-top: 1px solid var(--border); padding-top: 16px; }
@@ -212,6 +233,46 @@ button[type="submit"]:disabled { opacity: 0.5; cursor: not-allowed; }
 
 /* Review actions */
 .review-actions { margin-top: 8px; padding: 6px 0; font-size: 11px; }
+.review-form {
+  display: grid;
+  gap: 8px;
+  margin-top: 8px;
+}
+.review-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.review-row.single {
+  grid-template-columns: 1fr;
+}
+.review-input {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface2);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 12px;
+}
+.review-buttons {
+  display: flex;
+  gap: 8px;
+}
+.inline-action {
+  flex: 1;
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.inline-action.approve:hover { border-color: var(--green); color: var(--green); }
+.inline-action.reject:hover { border-color: var(--red); color: var(--red); }
 
 /* Feed */
 .feed { max-height: 600px; overflow-y: auto; }
@@ -284,6 +345,103 @@ button[type="submit"]:disabled { opacity: 0.5; cursor: not-allowed; }
 }
 .quality-bar .score { font-size: 12px; font-weight: 600; min-width: 40px; }
 
+/* Insights */
+.insights {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+  margin-top: 24px;
+}
+.insights-panel h2 { margin-bottom: 14px; }
+.insights-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 14px;
+}
+.detail-list {
+  display: grid;
+  gap: 10px;
+}
+.detail-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface2);
+  font-size: 12px;
+}
+.detail-key {
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.detail-value {
+  text-align: right;
+  word-break: break-word;
+}
+.treasury-section {
+  margin-top: 16px;
+}
+.section-label {
+  margin-bottom: 8px;
+  font-size: 11px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.account-list {
+  display: grid;
+  gap: 8px;
+}
+.account-item {
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface2);
+}
+.account-chain {
+  display: block;
+  font-size: 11px;
+  color: var(--accent);
+  margin-bottom: 4px;
+  text-transform: uppercase;
+}
+.account-address {
+  font-size: 12px;
+  word-break: break-all;
+}
+.audit-feed {
+  max-height: 320px;
+  overflow-y: auto;
+}
+.audit-item {
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface2);
+  margin-bottom: 10px;
+}
+.audit-action {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 6px;
+  font-size: 12px;
+}
+.audit-time {
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+.audit-meta,
+.audit-details {
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-dim);
+}
+
 /* OWS Banner */
 .ows-banner {
   margin-top: 24px;
@@ -322,4 +480,6 @@ button[type="submit"]:disabled { opacity: 0.5; cursor: not-allowed; }
 @media (max-width: 768px) {
   .main { grid-template-columns: 1fr; }
   .stats-bar { grid-template-columns: repeat(2, 1fr); }
+  .insights { grid-template-columns: 1fr; }
+  .review-row { grid-template-columns: 1fr; }
 }

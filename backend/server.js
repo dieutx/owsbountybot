@@ -5,10 +5,10 @@ import { fileURLToPath } from "url";
 import { dirname, join } from "path";
 import { getDb, closeDb } from "./db/database.js";
 import { generateId, correlationId } from "./lib/ids.js";
-import { audit } from "./lib/audit.js";
+import { audit, getAuditLog } from "./lib/audit.js";
 import { evaluateReport } from "./evaluator.js";
 import { generateFingerprints, storeFingerprints, findDuplicates } from "./lib/fingerprint.js";
-import { loadPolicy, evaluatePolicy, determineReviewLevel, recordDailySpend, getDailySpent } from "./lib/policy.js";
+import { loadPolicy, savePolicy, evaluatePolicy, determineReviewLevel, recordDailySpend, getDailySpent } from "./lib/policy.js";
 import { validate, CreateProgramSchema, SubmitReportSchema, ReviewReportSchema } from "./lib/schemas.js";
 import {
   ALLOWED_SIGNING_CHAINS,
@@ -77,6 +77,49 @@ function clientIp(req) {
   return req.ip || req.socket?.remoteAddress || "unknown";
 }
 
+function parseLimit(raw, fallback = 50, max = 200) {
+  const value = Number(raw);
+  if (!Number.isFinite(value) || value <= 0) return fallback;
+  return Math.min(max, Math.floor(value));
+}
+
+function resolveAllowedChains(chains) {
+  const requested = Array.isArray(chains) && chains.length > 0 ? chains : Object.keys(ALLOWED_SIGNING_CHAINS);
+  const normalized = [];
+  for (const chain of requested) {
+    const value = normalizeChain(chain);
+    if (!value) return { success: false, error: `Unsupported allowed chain "${chain}". Allowed: ${Object.keys(ALLOWED_SIGNING_CHAINS).join(", ")}` };
+    if (!normalized.includes(value)) normalized.push(value);
+  }
+  return { success: true, data: normalized };
+}
+
+function requireAdminToken(req, res) {
+  const adminToken = getAdminToken();
+  if (!adminToken) {
+    res.status(503).json({ error: "Admin actions disabled. Set BOUNTYBOT_ADMIN_TOKEN." });
+    return false;
+  }
+  if (!constantTimeEqual(req.get("x-admin-token"), adminToken)) {
+    res.status(403).json({ error: "Invalid admin token." });
+    return false;
+  }
+  return true;
+}
+
+function sanitizeAuditEntry(entry) {
+  return {
+    id: entry.id,
+    correlation_id: entry.correlation_id,
+    action: entry.action,
+    entity_type: entry.entity_type,
+    entity_id: entry.entity_id,
+    actor: entry.actor,
+    details: entry.details ? JSON.parse(entry.details) : null,
+    created_at: entry.created_at,
+  };
+}
+
 // Sanitize DB rows for client responses
 function sanitizeReport(r) {
   if (!r) return null;
@@ -141,8 +184,10 @@ function getProgramStats(programId) {
   FROM reports WHERE program_id = ?`).get(programId);
 
   const dailySpent = getDailySpent(programId);
-  const policyConfig = program.policy_config ? JSON.parse(program.policy_config) : {};
-  const evmAccount = program.wallet_accounts ? JSON.parse(program.wallet_accounts).find(a => a.chainId?.startsWith("eip155")) : null;
+  const policyConfig = loadPolicy(programId);
+  const accounts = program.wallet_accounts
+    ? JSON.parse(program.wallet_accounts).filter(a => Object.values(ALLOWED_SIGNING_CHAINS).includes(a.chainId))
+    : [];
 
   return {
     id: program.id,
@@ -150,7 +195,7 @@ function getProgramStats(programId) {
     description: program.description,
     wallet: {
       name: program.wallet_name,
-      accounts: evmAccount ? [{ chainId: evmAccount.chainId, address: evmAccount.address }] : [],
+      accounts,
     },
     policy: policyConfig,
     total_authorized: program.total_authorized,
@@ -228,8 +273,11 @@ export function createApp() {
       }
     }
 
+    const allowedChainsResult = resolveAllowedChains(v.data.allowedChains);
+    if (!allowedChainsResult.success) return res.status(400).json({ error: allowedChainsResult.error });
+
     const wallet = setupTreasuryWallet("bountybot-treasury");
-    const owsPolicy = setupOWSPolicy(maxPerBug, dailyLimit);
+    const owsPolicy = setupOWSPolicy(maxPerBug, dailyLimit, allowedChainsResult.data);
     let agentKey;
     try {
       agentKey = setupAgentKey(wallet.id, owsPolicy.id);
@@ -238,7 +286,13 @@ export function createApp() {
     }
 
     const programId = generateId("PRG");
-    const policyConfig = { maxPerBug, dailyLimit, allowedChains: Object.keys(ALLOWED_SIGNING_CHAINS), allowedTokens: ["USDC"], reviewThresholds: v.data.reviewThresholds || { auto: 50, manual: 150, admin: Infinity } };
+    const policyConfig = {
+      maxPerBug,
+      dailyLimit,
+      allowedChains: allowedChainsResult.data,
+      allowedTokens: ["USDC"],
+      reviewThresholds: v.data.reviewThresholds || { auto: 50, manual: 150, admin: Infinity },
+    };
 
     db.prepare(`INSERT INTO programs (id, name, description, wallet_name, wallet_id, wallet_accounts, policy_id, policy_config, agent_key_id, created_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
@@ -249,6 +303,7 @@ export function createApp() {
       owsPolicy.id, JSON.stringify(policyConfig), agentKey.id,
       new Date().toISOString(),
     );
+    savePolicy(programId, policyConfig);
 
     audit({ correlationId: cid, action: "program_created", entityType: "program", entityId: programId, ip: clientIp(req), details: { name, maxPerBug, dailyLimit } });
 
@@ -270,7 +325,7 @@ export function createApp() {
     const v = validate(SubmitReportSchema, req.body || {});
     if (!v.success) return res.status(400).json({ error: v.error });
 
-    const { title, severity, description, reporterWallet, chain } = v.data;
+    const { title, severity, description, reporterWallet, chain, affectedAsset, vulnClass } = v.data;
     const program = getActiveProgram();
     if (!program) return res.status(400).json({ error: "No bounty program initialized." });
 
@@ -301,9 +356,9 @@ export function createApp() {
     await sleep(EVALUATION_DELAY_MS);
 
     // Step 1: Duplicate detection
-    const fingerprints = generateFingerprints({ title, description });
+    const fingerprints = generateFingerprints({ title, description, affectedAsset, vulnClass });
     storeFingerprints(reportId, fingerprints);
-    const dupResult = findDuplicates(fingerprints, reportId);
+    const dupResult = findDuplicates({ fingerprints, title, programId: program.id, excludeReportId: reportId });
 
     if (dupResult.isDuplicate) {
       db.prepare("UPDATE reports SET status = 'rejected', reasoning = ?, duplicate_of = ?, duplicate_score = ?, evaluated_at = ? WHERE id = ?")
@@ -324,7 +379,7 @@ export function createApp() {
     }
 
     // Step 2: Evaluate quality
-    const evaluation = evaluateReport({ title, severity, description });
+    const evaluation = evaluateReport({ title, severity, description, affectedAsset, vulnClass });
 
     db.prepare(`UPDATE reports SET quality_score = ?, confidence = ?, vuln_class = ?, affected_asset = ?,
       signals = ?, reasoning = ?, evaluated_at = ? WHERE id = ?`).run(
@@ -414,6 +469,7 @@ export function createApp() {
   // === MANUAL REVIEW ===
 
   app.post("/api/report/:id/review", (req, res) => {
+    if (!requireAdminToken(req, res)) return;
     const cid = correlationId();
     const v = validate(ReviewReportSchema, req.body || {});
     if (!v.success) return res.status(400).json({ error: v.error });
@@ -439,6 +495,33 @@ export function createApp() {
 
     // Approve: sign the payout
     const payout = adjustedPayout ?? report.payout;
+    if (!(payout > 0)) {
+      return res.status(400).json({ error: "Approved payouts must be greater than zero." });
+    }
+
+    const policy = loadPolicy(report.program_id);
+    const policyResult = evaluatePolicy(policy, {
+      severity: report.severity,
+      payout,
+      chain: report.chain,
+      reporterWallet: report.reporter_wallet,
+      programId: report.program_id,
+    });
+    if (!policyResult.allowed) {
+      audit({
+        correlationId: cid,
+        action: "manual_approve_denied",
+        entityType: "report",
+        entityId: report.id,
+        actor: reviewedBy,
+        details: policyResult.denied,
+      });
+      return res.status(409).json({
+        error: `Policy denied manual approval: ${policyResult.denied.map(d => d.reason).join("; ")}`,
+        denied: policyResult.denied,
+      });
+    }
+
     db.prepare("UPDATE reports SET status = 'approved', payout = ?, reviewed_by = ?, reviewed_at = ? WHERE id = ?")
       .run(payout, reviewedBy, now, report.id);
 
@@ -469,6 +552,7 @@ export function createApp() {
       return res.json(sanitizeReport(updated));
     } catch (err) {
       console.error("[OWS] Signing error:", err.message);
+      audit({ correlationId: cid, action: "manual_signing_failed", entityType: "report", entityId: report.id, actor: reviewedBy, details: { error: err.message } });
       const updated = db.prepare("SELECT * FROM reports WHERE id = ?").get(report.id);
       return res.json(sanitizeReport(updated));
     }
@@ -479,7 +563,8 @@ export function createApp() {
   app.get("/api/reports", (req, res) => {
     const program = getActiveProgram();
     if (!program) return res.json([]);
-    const { status, duplicates, limit = 50 } = req.query;
+    const { status, duplicates } = req.query;
+    const limit = parseLimit(req.query.limit, 50);
     let rows;
     if (duplicates) {
       rows = getDb().prepare("SELECT * FROM reports WHERE program_id = ? AND duplicate_of IS NOT NULL ORDER BY created_at DESC LIMIT ?").all(program.id, Number(limit));
@@ -501,8 +586,8 @@ export function createApp() {
   app.get("/api/wallet", (req, res) => {
     const wallet = getWalletInfo("bountybot-treasury");
     if (!wallet) return res.status(404).json({ error: "Wallet not found" });
-    const evmAccount = wallet.accounts.find(a => a.chainId?.startsWith("eip155"));
-    res.json({ name: wallet.name, accounts: evmAccount ? [{ chainId: evmAccount.chainId, address: evmAccount.address }] : [] });
+    const accounts = wallet.accounts.filter(a => Object.values(ALLOWED_SIGNING_CHAINS).includes(a.chainId));
+    res.json({ name: wallet.name, accounts });
   });
 
   app.get("/api/transactions", (req, res) => {
@@ -515,19 +600,24 @@ export function createApp() {
   app.get("/api/policy", (req, res) => {
     const program = getActiveProgram();
     if (!program) return res.status(404).json({ error: "No program" });
-    const config = program.policy_config ? JSON.parse(program.policy_config) : {};
+    const config = loadPolicy(program.id);
     const spent = getDailySpent(program.id);
     res.json({ ...config, dailySpent: spent, dailyRemaining: Math.max(0, (config.dailyLimit || 500) - spent) });
   });
 
   app.get("/api/audit", (req, res) => {
-    const { entity_type, entity_id, correlation_id, limit = 50 } = req.query;
-    const rows = getDb().prepare("SELECT * FROM audit_log ORDER BY id DESC LIMIT ?").all(Number(limit));
-    res.json(rows);
+    const rows = getAuditLog({
+      entityType: req.query.entity_type,
+      entityId: req.query.entity_id,
+      correlationId: req.query.correlation_id,
+      limit: parseLimit(req.query.limit, 50),
+    });
+    res.json(rows.map(sanitizeAuditEntry));
   });
 
   // Reset: wipe all reports/transactions for the active program (demo convenience)
   app.post("/api/reset", (req, res) => {
+    if (!requireAdminToken(req, res)) return;
     const cid = correlationId();
     const program = getActiveProgram();
     if (!program) return res.status(404).json({ error: "No program to reset." });

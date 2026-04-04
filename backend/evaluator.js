@@ -29,12 +29,12 @@ const PENALTY_RULES = [
 ];
 
 export function evaluateReport(report) {
-  const { title, severity, description } = report;
+  const { title, severity, description, vulnClass: providedVulnClass, affectedAsset: providedAsset } = report;
   const fullText = `${title} ${description}`;
 
   // Step 1: Extract structured fields
-  const vulnClass = detectVulnClass(fullText);
-  const affectedAsset = extractAffectedAsset(fullText);
+  const vulnClass = providedVulnClass || detectVulnClass(fullText);
+  const affectedAsset = providedAsset || extractAffectedAsset(fullText);
 
   // Step 2: Score quality
   let qualityScore = 5; // base

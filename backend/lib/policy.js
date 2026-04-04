@@ -19,12 +19,35 @@ const DEFAULT_POLICY = {
   },
 };
 
+function mergePolicyConfig(config = {}) {
+  const merged = {
+    ...DEFAULT_POLICY,
+    ...config,
+    reviewThresholds: {
+      ...DEFAULT_POLICY.reviewThresholds,
+      ...(config.reviewThresholds || {}),
+    },
+  };
+
+  merged.maxPerBug = typeof config.maxPerBug === "object" && config.maxPerBug !== null
+    ? { ...DEFAULT_POLICY.maxPerBug, ...config.maxPerBug }
+    : (config.maxPerBug ?? DEFAULT_POLICY.maxPerBug);
+
+  return merged;
+}
+
 export function loadPolicy(programId) {
   const db = getDb();
   const row = db.prepare("SELECT config FROM policies WHERE program_id = ? AND active = 1 ORDER BY created_at DESC LIMIT 1").get(programId);
   if (row) {
-    return { ...DEFAULT_POLICY, ...JSON.parse(row.config) };
+    return mergePolicyConfig(JSON.parse(row.config));
   }
+
+  const program = db.prepare("SELECT policy_config FROM programs WHERE id = ?").get(programId);
+  if (program?.policy_config) {
+    return mergePolicyConfig(JSON.parse(program.policy_config));
+  }
+
   return DEFAULT_POLICY;
 }
 
@@ -36,7 +59,7 @@ export function savePolicy(programId, config, name = "default") {
     generateId("POL"),
     programId,
     name,
-    JSON.stringify({ ...DEFAULT_POLICY, ...config }),
+    JSON.stringify(mergePolicyConfig(config)),
     new Date().toISOString(),
   );
 }

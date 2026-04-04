@@ -15,12 +15,10 @@ export const ALLOWED_SIGNING_CHAINS = Object.freeze({
   solana: "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
 });
 
+const DEFAULT_ALLOWED_CHAINS = Object.freeze(Object.keys(ALLOWED_SIGNING_CHAINS));
+
 function getVaultPath() {
   return process.env.OWS_VAULT_PATH || undefined;
-}
-
-function buildPolicyId(maxPerTx, dailyLimit) {
-  return `bountybot-chain-guard-${maxPerTx}-${dailyLimit}`;
 }
 
 export function normalizeChain(chain) {
@@ -38,6 +36,21 @@ export function normalizeChain(chain) {
   };
 
   return aliasMap[normalized] || null;
+}
+
+function resolveAllowedChains(chains = DEFAULT_ALLOWED_CHAINS) {
+  const normalized = [];
+  for (const chain of chains) {
+    const value = normalizeChain(chain);
+    if (value && !normalized.includes(value)) {
+      normalized.push(value);
+    }
+  }
+  return normalized.length > 0 ? normalized : [...DEFAULT_ALLOWED_CHAINS];
+}
+
+function buildPolicyId(maxPerTx, dailyLimit, allowedChains = DEFAULT_ALLOWED_CHAINS) {
+  return `bountybot-chain-guard-${maxPerTx}-${dailyLimit}-${resolveAllowedChains(allowedChains).sort().join("-")}`;
 }
 
 // Create or get the bounty treasury wallet
@@ -59,8 +72,9 @@ export function setupTreasuryWallet(name = "bountybot-treasury") {
 }
 
 // Create a chain-guard policy for the agent. Numeric payout caps are enforced by the app.
-export function setupPolicy(maxPerTx = 150, dailyLimit = 500) {
-  const policyId = buildPolicyId(maxPerTx, dailyLimit);
+export function setupPolicy(maxPerTx = 150, dailyLimit = 500, allowedChains = DEFAULT_ALLOWED_CHAINS) {
+  const normalizedChains = resolveAllowedChains(allowedChains);
+  const policyId = buildPolicyId(maxPerTx, dailyLimit, normalizedChains);
   const vaultPath = getVaultPath();
   try {
     const existing = listPolicies(vaultPath);
@@ -82,15 +96,15 @@ export function setupPolicy(maxPerTx = 150, dailyLimit = 500) {
     metadata: {
       appEnforcedMaxPerBug: maxPerTx,
       appEnforcedDailyLimit: dailyLimit,
-      allowedSigningChains: Object.keys(ALLOWED_SIGNING_CHAINS),
+      allowedSigningChains: normalizedChains,
     },
     rules: [
-      { type: "allowed_chains", chain_ids: Object.values(ALLOWED_SIGNING_CHAINS) },
+      { type: "allowed_chains", chain_ids: normalizedChains.map(chain => ALLOWED_SIGNING_CHAINS[chain]) },
     ],
   };
 
   createPolicy(JSON.stringify(policy), vaultPath);
-  console.log(`[OWS] Created policy: ${policyId} (app caps $${maxPerTx}/bug, $${dailyLimit}/day)`);
+  console.log(`[OWS] Created policy: ${policyId} (app caps $${maxPerTx}/bug, $${dailyLimit}/day, chains: ${normalizedChains.join(", ")})`);
   return policy;
 }
 
