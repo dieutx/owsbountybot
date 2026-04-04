@@ -48,22 +48,44 @@ async function init() {
 }
 
 let sseConnected = false;
+let evtSource = null;
+let sseReconnectDelay = 1000;
+const SSE_MAX_DELAY = 30000;
 
 function connectSSE() {
-  const evtSource = new EventSource(`${API}/api/events`);
-  evtSource.addEventListener("connected", () => { sseConnected = true; });
+  if (evtSource) {
+    evtSource.close();
+    evtSource = null;
+  }
+
+  evtSource = new EventSource(`${API}/api/events`);
+
+  evtSource.addEventListener("connected", () => {
+    sseConnected = true;
+    sseReconnectDelay = 1000;
+  });
+
   evtSource.addEventListener("report_submitted", (e) => addFeedItem(JSON.parse(e.data)));
   evtSource.addEventListener("report_evaluated", (e) => { updateFeedItem(JSON.parse(e.data)); refreshStats(); });
   evtSource.addEventListener("payout_authorized", (e) => { const d = JSON.parse(e.data); updateFeedItem(d.report); refreshStats(); });
   evtSource.addEventListener("program_created", (e) => { updateStats(JSON.parse(e.data)); });
   evtSource.addEventListener("program_reset", () => { loadReports(); refreshStats(); });
-  evtSource.onerror = () => { sseConnected = false; };
+
+  evtSource.onerror = () => {
+    sseConnected = false;
+    evtSource.close();
+    evtSource = null;
+    setTimeout(() => {
+      connectSSE();
+    }, sseReconnectDelay);
+    sseReconnectDelay = Math.min(sseReconnectDelay * 2, SSE_MAX_DELAY);
+  };
 }
 
 // Silent background sync — no visible countdown, just a tiny status dot
 setInterval(() => {
   const dot = document.getElementById("statusDot");
-  if (dot) dot.className = "status-dot " + (sseConnected ? "live" : "offline");
+  if (dot) dot.className = "status-dot " + (sseConnected ? "live" : evtSource === null ? "reconnecting" : "offline");
   refreshStats();
   if (!sseConnected) loadReports();
 }, 15000);
