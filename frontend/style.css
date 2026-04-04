@@ -164,7 +164,9 @@ button[type="submit"]:disabled { opacity: 0.5; cursor: not-allowed; }
   transition: all 0.2s;
 }
 .demo-btn.good:hover { border-color: var(--green); color: var(--green); }
+.demo-btn.medium:hover { border-color: var(--orange); color: var(--orange); }
 .demo-btn.bad:hover { border-color: var(--red); color: var(--red); }
+.demo-btn.random:hover { border-color: var(--accent); color: var(--accent); }
 
 /* Filters */
 .filters { display: flex; gap: 6px; margin-bottom: 12px; flex-wrap: wrap; }

