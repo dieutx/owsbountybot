@@ -47,15 +47,17 @@ Researchers submit bug reports. The system evaluates quality, detects duplicates
 - **Append-only audit log** — Every action recorded with correlation IDs
 - **SQLite persistence** — WAL mode, proper schema with indexes, survives restarts
 - **Real-time dashboard** — SSE feed with status filters (All / Signed / Pending / Rejected / Duplicates), silent background sync with smart diff (only changed items update), live connection indicator
-- **Demo mode** — 16 randomized sample reports across 3 quality tiers (High / Medium / Low / Random), different each click
+- **Demo mode** — 18 randomized sample reports (including multi-chain Solana/Tron wallets) across 3 quality tiers (High / Medium / Low / Random), different each click
 - **Reset** — One-click feed reset clears all reports, transactions, and budget counters
 - **Click-to-expand** — Click any report to see full description + audit trail timeline
 - **Admin review panel** — Inline approve/reject buttons for pending reports (requires admin token)
 - **CSV export** — `GET /api/reports/export` (admin-only) downloads all reports as CSV
 - **Health check** — `GET /api/health` for load balancers and monitoring
 - **Retry signing** — `POST /api/report/:id/retry-sign` for reports stuck in approved state
-- **Multi-chain wallets** — Supports EVM, Solana, Bitcoin, Tron, Cosmos with auto-detection from wallet address format
+- **Multi-chain wallets** — Supports EVM, Solana, Bitcoin, Tron, Cosmos with auto-detection from wallet address format; chain selector auto-switches to match detected address
 - **Cross-chain detection** — Flags payouts where recipient chain differs from treasury source chain, tracks bridge status (pending/bridging/bridged/failed)
+- **Block explorer links** — Clickable tx hash and treasury address links to Etherscan, Solscan, Mempool, Tronscan, Mintscan per chain; signed payouts show "awaiting broadcast" until relayed
+- **Per-chain treasury display** — Each signed payout shows the matching treasury address for that chain (hover for full address)
 - **Zod validation** — All inputs validated with structured error responses
 - **Security hardened** — CORS, CSP, rate limiting, constant-time token comparison, signature redaction
 
@@ -173,13 +175,13 @@ pending → evaluating → rejected
 
 ## Supported Chains
 
-| Chain | Wallet Format | Auto-Detect | Aliases |
-|-------|--------------|-------------|---------|
-| EVM (Ethereum/Base/Polygon) | `0x` + 40 hex | Yes | `eth`, `base`, `polygon` |
-| Solana | Base58, 32-44 chars | Yes | `sol` |
-| Bitcoin | `bc1...` or `1.../3...` | Yes | `btc` |
-| Tron | `T` + 33 chars | Yes | `trx` |
-| Cosmos | `cosmos1` + 38 chars | Yes | `atom` |
+| Chain | Wallet Format | Auto-Detect | Aliases | Explorer |
+|-------|--------------|-------------|---------|----------|
+| EVM (Ethereum/Base/Polygon) | `0x` + 40 hex | Yes | `eth`, `base`, `polygon` | Etherscan |
+| Solana | Base58, 32-44 chars | Yes | `sol` | Solscan |
+| Bitcoin | `bc1...` or `1.../3...` | Yes | `btc` | Mempool.space |
+| Tron | `T` + 33 chars | Yes | `trx` | Tronscan |
+| Cosmos | `cosmos1` + 38 chars | Yes | `atom` | Mintscan |
 
 ### Cross-Chain Payouts
 
