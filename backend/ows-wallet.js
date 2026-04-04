@@ -13,6 +13,9 @@ import {
 export const ALLOWED_SIGNING_CHAINS = Object.freeze({
   evm: "eip155:1",
   solana: "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+  bitcoin: "bip122:000000000019d6689c085ae165831e93",
+  tron: "tron:mainnet",
+  cosmos: "cosmos:cosmoshub-4",
 });
 
 function getVaultPath() {
@@ -33,11 +36,32 @@ export function normalizeChain(chain) {
     evm: "evm",
     "eip155:1": "evm",
     ethereum: "evm",
+    eth: "evm",
+    base: "evm",
+    polygon: "evm",
     solana: "solana",
+    sol: "solana",
     [ALLOWED_SIGNING_CHAINS.solana.toLowerCase()]: "solana",
+    bitcoin: "bitcoin",
+    btc: "bitcoin",
+    tron: "tron",
+    trx: "tron",
+    cosmos: "cosmos",
+    atom: "cosmos",
   };
 
   return aliasMap[normalized] || null;
+}
+
+// Auto-detect chain from wallet address format
+export function detectChainFromAddress(address) {
+  if (!address || typeof address !== "string") return null;
+  if (/^0x[0-9a-fA-F]{40}$/.test(address)) return "evm";
+  if (/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(address)) return "solana";
+  if (/^T[1-9A-HJ-NP-Za-km-z]{33}$/.test(address)) return "tron";
+  if (/^(bc1[a-zA-HJ-NP-Z0-9]{25,87}|[13][a-km-zA-HJ-NP-Z1-9]{25,34})$/.test(address)) return "bitcoin";
+  if (/^cosmos1[a-z0-9]{38}$/.test(address)) return "cosmos";
+  return null;
 }
 
 // Create or get the bounty treasury wallet

@@ -13,6 +13,7 @@ import { validate, CreateProgramSchema, SubmitReportSchema, ReviewReportSchema, 
 import {
   ALLOWED_SIGNING_CHAINS,
   normalizeChain,
+  detectChainFromAddress,
   setupTreasuryWallet,
   setupPolicy as setupOWSPolicy,
   setupAgentKey,
@@ -29,6 +30,9 @@ const MAX_SSE_CLIENTS = 200;
 const WALLET_PATTERNS = {
   evm: /^0x[0-9a-fA-F]{40}$/,
   solana: /^[1-9A-HJ-NP-Za-km-z]{32,44}$/,
+  bitcoin: /^(bc1[a-zA-HJ-NP-Z0-9]{25,87}|[13][a-km-zA-HJ-NP-Z1-9]{25,34})$/,
+  tron: /^T[1-9A-HJ-NP-Za-km-z]{33}$/,
+  cosmos: /^cosmos1[a-z0-9]{38}$/,
 };
 
 // Rate limiting
@@ -346,12 +350,21 @@ export function createApp() {
     const program = getActiveProgram();
     if (!program) return res.status(400).json({ error: "No bounty program initialized." });
 
-    const normalizedChain = normalizeChain(chain);
-    if (!normalizedChain) return res.status(400).json({ error: `Unsupported chain. Allowed: ${Object.keys(ALLOWED_SIGNING_CHAINS).join(", ")}` });
+    // Auto-detect chain from wallet address if chain is "auto" or not specified
+    let normalizedChain;
+    if (!chain || chain === "auto") {
+      normalizedChain = detectChainFromAddress(reporterWallet);
+      if (!normalizedChain) {
+        return res.status(400).json({ error: `Could not detect chain from wallet address. Please specify chain explicitly. Supported: ${Object.keys(ALLOWED_SIGNING_CHAINS).join(", ")}` });
+      }
+    } else {
+      normalizedChain = normalizeChain(chain);
+      if (!normalizedChain) return res.status(400).json({ error: `Unsupported chain. Allowed: ${Object.keys(ALLOWED_SIGNING_CHAINS).join(", ")}` });
+    }
 
     const walletPattern = WALLET_PATTERNS[normalizedChain];
     if (walletPattern && !walletPattern.test(reporterWallet)) {
-      return res.status(400).json({ error: `Invalid wallet address format for "${normalizedChain}".` });
+      return res.status(400).json({ error: `Invalid wallet address format for "${normalizedChain}". Check your address or select a different chain.` });
     }
 
     const db = getDb();

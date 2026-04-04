@@ -18,7 +18,7 @@ export const SubmitReportSchema = z.object({
   severity: z.enum(["critical", "high", "medium", "low"]),
   description: z.string().min(1).max(5000),
   reporterWallet: z.string().min(1).max(100),
-  chain: z.string().default("evm"),
+  chain: z.string().default("auto"),
   affectedAsset: z.string().max(500).optional(),
   vulnClass: z.string().max(100).optional(),
 });
