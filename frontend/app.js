@@ -14,6 +14,25 @@ function getTreasuryAddress(chain) {
   return account ? account.address : null;
 }
 
+// Block explorer URLs per chain
+const EXPLORERS = {
+  evm:     { tx: "https://etherscan.io/tx/",     addr: "https://etherscan.io/address/" },
+  solana:  { tx: "https://solscan.io/tx/",        addr: "https://solscan.io/account/" },
+  bitcoin: { tx: "https://mempool.space/tx/",      addr: "https://mempool.space/address/" },
+  tron:    { tx: "https://tronscan.org/#/transaction/", addr: "https://tronscan.org/#/address/" },
+  cosmos:  { tx: "https://www.mintscan.io/cosmos/tx/",  addr: "https://www.mintscan.io/cosmos/account/" },
+};
+
+function getExplorerTxUrl(chain, txHash) {
+  const explorer = EXPLORERS[chain] || EXPLORERS.evm;
+  return explorer.tx + txHash;
+}
+
+function getExplorerAddrUrl(chain, address) {
+  const explorer = EXPLORERS[chain] || EXPLORERS.evm;
+  return explorer.addr + address;
+}
+
 function el(tag, attrs = {}, children = []) {
   const node = document.createElement(tag);
   for (const [k, v] of Object.entries(attrs)) {
@@ -303,11 +322,9 @@ function buildFeedItem(report) {
   }
 
   if (report.status === "signed" || report.status === "confirmed" || report.status === "broadcasted") {
-    const ref = report.tx_hash || report.authorization_id || "pending";
-    const refLabel = report.tx_hash ? "Tx" : "Auth";
-    const refText = ref.length > 24 ? ref.slice(0, 24) + "..." : ref;
     const chain = (report.chain || "evm").toUpperCase();
     const isCrossChain = report.chain && report.chain !== "evm";
+
     const payoutChildren = [
       el("span", { className: "payout-amount", textContent: `$${report.payout} USDC` }),
       el("span", { className: "tag chain-tag", textContent: chain }),
@@ -315,14 +332,32 @@ function buildFeedItem(report) {
     if (isCrossChain) {
       payoutChildren.push(el("span", { className: "tag bridge-tag", textContent: "cross-chain" }));
     }
-    payoutChildren.push(el("span", { className: "tx-hash", textContent: `${refLabel}: ${refText}` }));
+
+    // Tx hash with explorer link, or auth ID
+    if (report.tx_hash) {
+      const explorerUrl = getExplorerTxUrl(report.chain, report.tx_hash);
+      const txShort = report.tx_hash.slice(0, 16) + "...";
+      const txLink = el("a", { className: "tx-link", href: explorerUrl, target: "_blank", rel: "noopener", title: report.tx_hash, textContent: `Tx: ${txShort}` });
+      txLink.addEventListener("click", (e) => e.stopPropagation());
+      payoutChildren.push(txLink);
+    } else if (report.authorization_id) {
+      const authShort = report.authorization_id.length > 20 ? report.authorization_id.slice(0, 20) + "..." : report.authorization_id;
+      payoutChildren.push(el("span", { className: "tx-hash auth-id", textContent: `Auth: ${authShort}` }));
+      payoutChildren.push(el("span", { className: "tag pending-broadcast-tag", textContent: "awaiting broadcast" }));
+    }
     item.appendChild(el("div", { className: "payout-info" }, payoutChildren));
 
-    // Show treasury address for this chain
+    // Show treasury source address for this chain
     const treasuryAddr = getTreasuryAddress(report.chain);
     if (treasuryAddr) {
+      const explorerAddrUrl = getExplorerAddrUrl(report.chain, treasuryAddr);
       const short = treasuryAddr.slice(0, 10) + "..." + treasuryAddr.slice(-6);
-      item.appendChild(el("div", { className: "treasury-from", title: treasuryAddr, textContent: `From treasury: ${short}` }));
+      const fromEl = el("div", { className: "treasury-from" });
+      fromEl.appendChild(text("From treasury: "));
+      const addrLink = el("a", { className: "tx-link", href: explorerAddrUrl, target: "_blank", rel: "noopener", title: treasuryAddr, textContent: short });
+      addrLink.addEventListener("click", (e) => e.stopPropagation());
+      fromEl.appendChild(addrLink);
+      item.appendChild(fromEl);
     }
   }
 
