@@ -562,6 +562,8 @@ export function createApp() {
     db.prepare("UPDATE reports SET status = 'approved', payout = ?, reviewed_by = ?, reviewed_at = ? WHERE id = ?")
       .run(payout, reviewedBy, now, report.id);
 
+    const bridgeInfo = getBridgeInfo(report.chain);
+
     try {
       const payoutResult = authorizePayout("bountybot-treasury", report.chain, payout, report.reporter_wallet);
       const nonce = crypto.randomUUID();
@@ -573,14 +575,15 @@ export function createApp() {
       );
 
       const txId = generateId("TX");
-      db.prepare(`INSERT INTO transactions (id, report_id, program_id, amount, recipient, chain, token, status, authorization_id, signature, nonce, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, 'USDC', 'signed', ?, ?, ?, ?)`).run(
+      db.prepare(`INSERT INTO transactions (id, report_id, program_id, amount, recipient, chain, source_chain, needs_bridge, bridge_status, token, status, authorization_id, signature, nonce, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'USDC', 'signed', ?, ?, ?, ?)`).run(
         txId, report.id, program.id, payout, report.reporter_wallet, report.chain,
+        bridgeInfo.sourceChain, bridgeInfo.needsBridge ? 1 : 0, bridgeInfo.needsBridge ? "pending" : null,
         payoutResult.authorizationId, payoutResult.signature, nonce, new Date().toISOString(),
       );
 
       db.prepare("UPDATE programs SET total_authorized = total_authorized + ? WHERE id = ?").run(payout, program.id);
-      audit({ correlationId: cid, action: "manual_approve_signed", entityType: "report", entityId: report.id, actor: reviewedBy, details: { payout, txId } });
+      audit({ correlationId: cid, action: "manual_approve_signed", entityType: "report", entityId: report.id, actor: reviewedBy, details: { payout, txId, ...(bridgeInfo.needsBridge ? { bridge: bridgeInfo } : {}) } });
 
       const updated = db.prepare("SELECT * FROM reports WHERE id = ?").get(report.id);
       broadcast("payout_authorized", { report: sanitizeReport(updated) });
@@ -605,6 +608,8 @@ export function createApp() {
     }
 
     const program = db.prepare("SELECT * FROM programs WHERE id = ?").get(report.program_id);
+    const bridgeInfo = getBridgeInfo(report.chain);
+
     try {
       const payoutResult = authorizePayout("bountybot-treasury", report.chain, report.payout, report.reporter_wallet);
       const nonce = crypto.randomUUID();
@@ -616,16 +621,17 @@ export function createApp() {
       );
 
       const txId = generateId("TX");
-      db.prepare(`INSERT INTO transactions (id, report_id, program_id, amount, recipient, chain, token, status, authorization_id, signature, nonce, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, 'USDC', 'signed', ?, ?, ?, ?)`).run(
+      db.prepare(`INSERT INTO transactions (id, report_id, program_id, amount, recipient, chain, source_chain, needs_bridge, bridge_status, token, status, authorization_id, signature, nonce, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'USDC', 'signed', ?, ?, ?, ?)`).run(
         txId, report.id, program.id, report.payout, report.reporter_wallet, report.chain,
+        bridgeInfo.sourceChain, bridgeInfo.needsBridge ? 1 : 0, bridgeInfo.needsBridge ? "pending" : null,
         payoutResult.authorizationId, payoutResult.signature, nonce, new Date().toISOString(),
       );
 
       recordDailySpend(program.id, report.payout);
       db.prepare("UPDATE programs SET total_authorized = total_authorized + ? WHERE id = ?").run(report.payout, program.id);
 
-      audit({ correlationId: cid, action: "signing_retry_success", entityType: "report", entityId: report.id, ip: clientIp(req), details: { payout: report.payout, txId } });
+      audit({ correlationId: cid, action: "signing_retry_success", entityType: "report", entityId: report.id, ip: clientIp(req), details: { payout: report.payout, txId, ...(bridgeInfo.needsBridge ? { bridge: bridgeInfo } : {}) } });
 
       const updated = db.prepare("SELECT * FROM reports WHERE id = ?").get(report.id);
       broadcast("payout_authorized", { report: sanitizeReport(updated) });
