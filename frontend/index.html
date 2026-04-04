@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>BountyBot — Automated Bug Bounty Agent</title>
+  <meta name="description" content="BountyBot — Automated bug bounty agent powered by OWS. Submit vulnerability reports and receive automated payout approvals.">
   <link rel="icon" type="image/svg+xml" href="favicon.svg">
   <link rel="stylesheet" href="style.css">
 </head>
@@ -53,25 +54,28 @@
         <form id="reportForm">
           <div class="field">
             <label>Title</label>
-            <input type="text" id="bugTitle" placeholder="SQL Injection in /api/users endpoint" required>
+            <input type="text" id="bugTitle" placeholder="SQL Injection in /api/users endpoint" required aria-label="Bug report title">
           </div>
           <div class="field">
             <label>Severity</label>
-            <div class="severity-select">
-              <label class="sev critical"><input type="radio" name="severity" value="critical"> Critical</label>
-              <label class="sev high"><input type="radio" name="severity" value="high" checked> High</label>
-              <label class="sev medium"><input type="radio" name="severity" value="medium"> Medium</label>
-              <label class="sev low"><input type="radio" name="severity" value="low"> Low</label>
-            </div>
+            <fieldset class="severity-fieldset">
+              <legend class="sr-only">Severity Level</legend>
+              <div class="severity-select">
+                <label class="sev critical"><input type="radio" name="severity" value="critical"> Critical</label>
+                <label class="sev high"><input type="radio" name="severity" value="high" checked> High</label>
+                <label class="sev medium"><input type="radio" name="severity" value="medium"> Medium</label>
+                <label class="sev low"><input type="radio" name="severity" value="low"> Low</label>
+              </div>
+            </fieldset>
           </div>
           <div class="field">
             <label>Description</label>
-            <textarea id="bugDescription" rows="6" placeholder="Steps to reproduce, impact analysis, proof of concept..." required maxlength="5000"></textarea>
+            <textarea id="bugDescription" rows="6" placeholder="Steps to reproduce, impact analysis, proof of concept..." required maxlength="5000" aria-label="Bug description"></textarea>
             <span id="charCounter" class="char-counter">0 / 5000</span>
           </div>
           <div class="field">
             <label>Your Wallet Address</label>
-            <input type="text" id="reporterWallet" placeholder="0x742d35Cc... or Solana/Tron/Bitcoin/Cosmos address" required>
+            <input type="text" id="reporterWallet" placeholder="0x742d35Cc... or Solana/Tron/Bitcoin/Cosmos address" required aria-label="Wallet address for payout">
             <div class="chain-row">
               <select id="chainSelect" class="chain-select">
                 <option value="auto">Auto-detect chain</option>
