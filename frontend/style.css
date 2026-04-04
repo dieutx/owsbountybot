@@ -206,6 +206,7 @@ button[type="submit"]:disabled { opacity: 0.5; cursor: not-allowed; }
 .tag.asset { color: var(--orange); }
 .tag.chain-tag { color: var(--green); border-color: rgba(0,230,118,0.3); }
 .tag.bridge-tag { color: var(--yellow); border-color: rgba(255,215,64,0.3); background: rgba(255,215,64,0.08); }
+.treasury-from { font-size: 10px; color: var(--text-dim); margin-top: 4px; cursor: help; }
 
 /* Duplicate flag */
 .duplicate-flag {

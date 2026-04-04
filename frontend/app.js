@@ -2,6 +2,17 @@ const API = window.location.origin;
 let programInitialized = false;
 let currentFilter = "all";
 let adminToken = "";
+let treasuryAccounts = []; // all chain addresses from the treasury wallet
+
+const CHAIN_ID_MAP = {
+  evm: "eip155", solana: "solana", bitcoin: "bip122", tron: "tron", cosmos: "cosmos",
+};
+
+function getTreasuryAddress(chain) {
+  const prefix = CHAIN_ID_MAP[chain] || chain;
+  const account = treasuryAccounts.find(a => (a.chainId || "").startsWith(prefix));
+  return account ? account.address : null;
+}
 
 function el(tag, attrs = {}, children = []) {
   const node = document.createElement(tag);
@@ -113,8 +124,9 @@ function updateStats(data) {
   setText("dailyRemaining", `$${Math.max(0, dailyLimit - spent)}`);
   setText("pendingCount", data.pending_review_count ?? 0);
 
-  const accounts = data.wallet?.accounts || [];
+  treasuryAccounts = data.wallet?.accounts || [];
   const walletEl = document.getElementById("walletAddr");
+  const accounts = treasuryAccounts;
   if (walletEl && accounts.length > 0) {
     const primary = accounts.find(a => (a.chainId || "").includes("eip155")) || accounts[0];
     walletEl.textContent = `${primary.address.slice(0, 6)}...${primary.address.slice(-4)}`;
@@ -305,6 +317,13 @@ function buildFeedItem(report) {
     }
     payoutChildren.push(el("span", { className: "tx-hash", textContent: `${refLabel}: ${refText}` }));
     item.appendChild(el("div", { className: "payout-info" }, payoutChildren));
+
+    // Show treasury address for this chain
+    const treasuryAddr = getTreasuryAddress(report.chain);
+    if (treasuryAddr) {
+      const short = treasuryAddr.slice(0, 10) + "..." + treasuryAddr.slice(-6);
+      item.appendChild(el("div", { className: "treasury-from", title: treasuryAddr, textContent: `From treasury: ${short}` }));
+    }
   }
 
   if ((report.status === "pending_review" || report.status === "probable_duplicate") && adminToken) {
