@@ -19,21 +19,57 @@ const DEFAULT_POLICY = {
   },
 };
 
+function normalizeMaxPerBug(maxPerBug = DEFAULT_POLICY.maxPerBug) {
+  if (typeof maxPerBug === "object" && maxPerBug !== null) {
+    const merged = { ...DEFAULT_POLICY.maxPerBug };
+    for (const [severity, value] of Object.entries(maxPerBug)) {
+      if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+        merged[severity] = value;
+      }
+    }
+    return merged;
+  }
+
+  return typeof maxPerBug === "number" && Number.isFinite(maxPerBug) && maxPerBug > 0
+    ? maxPerBug
+    : DEFAULT_POLICY.maxPerBug;
+}
+
+function normalizeReviewThresholds(thresholds = {}) {
+  const merged = { ...DEFAULT_POLICY.reviewThresholds };
+  for (const key of ["auto", "manual", "admin"]) {
+    const value = thresholds[key];
+    if (typeof value === "number" && Number.isFinite(value) && value >= 0) {
+      merged[key] = value;
+    }
+  }
+  return merged;
+}
+
 function mergePolicyConfig(config = {}) {
   const merged = {
     ...DEFAULT_POLICY,
     ...config,
-    reviewThresholds: {
-      ...DEFAULT_POLICY.reviewThresholds,
-      ...(config.reviewThresholds || {}),
-    },
+    reviewThresholds: normalizeReviewThresholds(config.reviewThresholds || {}),
   };
-
-  merged.maxPerBug = typeof config.maxPerBug === "object" && config.maxPerBug !== null
-    ? { ...DEFAULT_POLICY.maxPerBug, ...config.maxPerBug }
-    : (config.maxPerBug ?? DEFAULT_POLICY.maxPerBug);
+  merged.maxPerBug = normalizeMaxPerBug(config.maxPerBug);
 
   return merged;
+}
+
+export function serializePolicyConfig(config = {}) {
+  const merged = mergePolicyConfig(config);
+  const serialized = {
+    ...merged,
+    reviewThresholds: { ...merged.reviewThresholds },
+    maxPerBug: typeof merged.maxPerBug === "object" ? { ...merged.maxPerBug } : merged.maxPerBug,
+  };
+
+  if (!Number.isFinite(serialized.reviewThresholds.admin)) {
+    delete serialized.reviewThresholds.admin;
+  }
+
+  return serialized;
 }
 
 export function loadPolicy(programId) {
@@ -59,7 +95,7 @@ export function savePolicy(programId, config, name = "default") {
     generateId("POL"),
     programId,
     name,
-    JSON.stringify(mergePolicyConfig(config)),
+    JSON.stringify(serializePolicyConfig(config)),
     new Date().toISOString(),
   );
 }

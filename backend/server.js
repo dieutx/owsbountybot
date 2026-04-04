@@ -8,7 +8,7 @@ import { generateId, correlationId } from "./lib/ids.js";
 import { audit, getAuditLog } from "./lib/audit.js";
 import { evaluateReport } from "./evaluator.js";
 import { generateFingerprints, storeFingerprints, findDuplicates } from "./lib/fingerprint.js";
-import { loadPolicy, savePolicy, evaluatePolicy, determineReviewLevel, recordDailySpend, getDailySpent } from "./lib/policy.js";
+import { loadPolicy, savePolicy, serializePolicyConfig, evaluatePolicy, determineReviewLevel, recordDailySpend, getDailySpent } from "./lib/policy.js";
 import { validate, CreateProgramSchema, SubmitReportSchema, ReviewReportSchema } from "./lib/schemas.js";
 import {
   ALLOWED_SIGNING_CHAINS,
@@ -300,7 +300,7 @@ export function createApp() {
       name || "BountyBot Program",
       description || "Automated bug bounty with OWS-powered payout approvals",
       wallet.name, wallet.id, JSON.stringify(wallet.accounts),
-      owsPolicy.id, JSON.stringify(policyConfig), agentKey.id,
+      owsPolicy.id, JSON.stringify(serializePolicyConfig(policyConfig)), agentKey.id,
       new Date().toISOString(),
     );
     savePolicy(programId, policyConfig);

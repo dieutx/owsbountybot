@@ -139,6 +139,20 @@ test("custom review thresholds are enforced during evaluation", async () => {
   }
 });
 
+test("default admin review threshold remains open-ended after persistence", async () => {
+  const sb = sandbox();
+  const { server, base } = await startServer(sb);
+  try {
+    const { json: program } = await createProgram(base);
+    const { loadPolicy } = await import("../backend/lib/policy.js");
+    const policy = loadPolicy(program.id);
+    assert.equal(policy.reviewThresholds.admin, Infinity);
+  } finally {
+    await stop(server);
+    sb.cleanup();
+  }
+});
+
 test("custom daily limit is enforced for signed payouts", async () => {
   const sb = sandbox();
   const { server, base } = await startServer(sb);

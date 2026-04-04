@@ -61,6 +61,10 @@ function formatTime(value) {
   return new Date(value).toLocaleTimeString();
 }
 
+function formatThreshold(value) {
+  return value == null || !Number.isFinite(value) ? "∞" : `$${value}`;
+}
+
 function showMessage(id, textContent, kind = "error") {
   const node = document.getElementById(id);
   if (!node) return;
@@ -226,7 +230,7 @@ async function loadPolicySummary() {
       ["Allowed Chains", (policy.allowedChains || []).join(", ") || "—"],
       ["Daily Budget", `$${policy.dailyLimit ?? 0}`],
       ["Daily Remaining", `$${policy.dailyRemaining ?? 0}`],
-      ["Review Thresholds", `auto ≤ $${policy.reviewThresholds?.auto ?? 0} · manual ≤ $${policy.reviewThresholds?.manual ?? 0}`],
+      ["Review Thresholds", `auto ≤ ${formatThreshold(policy.reviewThresholds?.auto)} · manual ≤ ${formatThreshold(policy.reviewThresholds?.manual)} · admin ≤ ${formatThreshold(policy.reviewThresholds?.admin)}`],
       ["Reporter Limit", `${policy.maxPerReporterPerDay ?? 0} per day`],
       ["Cooldown", `${policy.cooldownSeconds ?? 0}s`],
     ];
@@ -238,14 +242,21 @@ async function loadPolicySummary() {
       ]));
     });
 
-    if ((wallet.accounts || []).length === 0) {
+    const allowedChainIds = new Set((policy.allowedChains || []).map((chain) => {
+      if (chain === "evm") return "eip155:1";
+      if (chain === "solana") return "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp";
+      return chain;
+    }));
+    const visibleAccounts = (wallet.accounts || []).filter(account => allowedChainIds.size === 0 || allowedChainIds.has(account.chainId));
+
+    if (visibleAccounts.length === 0) {
       accounts.appendChild(el("div", { className: "feed-empty" }, [
         el("p", { textContent: "No treasury accounts available." }),
       ]));
       return;
     }
 
-    wallet.accounts.forEach((account) => {
+    visibleAccounts.forEach((account) => {
       accounts.appendChild(el("div", { className: "account-item" }, [
         el("span", { className: "account-chain", textContent: account.chainId }),
         el("span", { className: "account-address", textContent: account.address }),
