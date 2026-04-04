@@ -1,6 +1,7 @@
 const API = window.location.origin;
 let programInitialized = false;
 let currentFilter = "all";
+let lastSubmittedId = null;
 
 function el(tag, attrs = {}, children = []) {
   const node = document.createElement(tag);
@@ -49,12 +50,39 @@ async function init() {
 
 let sseConnected = false;
 
+function showToast(message, type = "info") {
+  let container = document.getElementById("toastContainer");
+  if (!container) {
+    container = el("div", { id: "toastContainer", className: "toast-container" });
+    document.body.appendChild(container);
+  }
+
+  const toast = el("div", { className: `toast toast-${type}`, textContent: message });
+  container.appendChild(toast);
+
+  setTimeout(() => {
+    toast.classList.add("toast-exit");
+    setTimeout(() => toast.remove(), 300);
+  }, 4000);
+}
+
 function connectSSE() {
   const evtSource = new EventSource(`${API}/api/events`);
   evtSource.addEventListener("connected", () => { sseConnected = true; });
-  evtSource.addEventListener("report_submitted", (e) => addFeedItem(JSON.parse(e.data)));
+  evtSource.addEventListener("report_submitted", (e) => {
+    const data = JSON.parse(e.data);
+    addFeedItem(data);
+    if (data.id !== lastSubmittedId) {
+      showToast(`New report: ${data.title}`, "info");
+    }
+  });
   evtSource.addEventListener("report_evaluated", (e) => { updateFeedItem(JSON.parse(e.data)); refreshStats(); });
-  evtSource.addEventListener("payout_authorized", (e) => { const d = JSON.parse(e.data); updateFeedItem(d.report); refreshStats(); });
+  evtSource.addEventListener("payout_authorized", (e) => {
+    const d = JSON.parse(e.data);
+    updateFeedItem(d.report);
+    refreshStats();
+    showToast(`Payout signed: $${d.report.payout || 0} USDC`, "success");
+  });
   evtSource.addEventListener("program_created", (e) => { updateStats(JSON.parse(e.data)); });
   evtSource.addEventListener("program_reset", () => { loadReports(); refreshStats(); });
   evtSource.onerror = () => { sseConnected = false; };
@@ -294,10 +322,19 @@ document.getElementById("reportForm").addEventListener("submit", async (e) => {
       msgEl.hidden = false;
     } else {
       // Show the result immediately in the feed (don't wait for SSE)
+      lastSubmittedId = json.id;
       addFeedItem(json);
       refreshStats();
       document.getElementById("reportForm").reset();
       document.querySelector('input[name="severity"][value="high"]').checked = true;
+      // Update char counter after reset
+      const counter = document.querySelector(".char-count");
+      if (counter) { counter.textContent = "0 / 5000"; counter.style.color = "var(--text-dim)"; }
+      // Show success feedback
+      msgEl.textContent = `Report submitted! ID: ${json.id} \u2014 Status: ${json.status.replace(/_/g, " ")}`;
+      msgEl.className = "form-message success";
+      msgEl.hidden = false;
+      setTimeout(() => { msgEl.hidden = true; }, 5000);
     }
   } catch (err) {
     msgEl.textContent = "Network error. Try again.";
@@ -423,6 +460,13 @@ function fillForm(r) {
   document.querySelector('input[name="severity"][value="' + r.severity + '"]').checked = true;
   document.getElementById("bugDescription").value = r.description;
   document.getElementById("reporterWallet").value = r.wallet;
+  // Update char counter
+  const counter = document.querySelector(".char-count");
+  if (counter) {
+    const len = r.description.length;
+    counter.textContent = `${len} / 5000`;
+    counter.style.color = len > 4500 ? "var(--red)" : "var(--text-dim)";
+  }
 }
 
 function fillGoodReport() { fillForm(pick(GOOD_REPORTS)); }
@@ -439,5 +483,17 @@ document.getElementById("resetBtn").addEventListener("click", resetAll);
 document.querySelectorAll(".filter-btn").forEach(btn => {
   btn.addEventListener("click", () => setFilter(btn.dataset.filter));
 });
+
+// Character counter for description field
+const descField = document.getElementById("bugDescription");
+if (descField) {
+  const counter = el("span", { className: "char-count", textContent: "0 / 5000" });
+  descField.parentElement.appendChild(counter);
+  descField.addEventListener("input", () => {
+    const len = descField.value.length;
+    counter.textContent = `${len} / 5000`;
+    counter.style.color = len > 4500 ? "var(--red)" : "var(--text-dim)";
+  });
+}
 
 init();
