@@ -39,11 +39,11 @@ Researchers submit bug reports. The system evaluates quality, detects duplicates
 
 - **Quality scoring** — Reports scored 0–10 with confidence percentage
 - **Vulnerability extraction** — Auto-detects vuln class (SQLi, XSS, CSRF, etc.) and affected endpoints
-- **Layered duplicate detection** — Title hash, description hash, vuln type, affected asset, combined fingerprint + trigram similarity
+- **Layered duplicate detection** — Title hash, description hash, vuln type, affected asset, combined fingerprint + fuzzy title matching (trigram similarity, program-scoped, tiered weights)
 - **Probable duplicate** state — Ambiguous cases flagged for review instead of hard-rejected
 - **Composable policy engine** — Per-severity caps, daily budget, per-reporter limits, chain allowlists, cooldowns
 - **Multi-step review** — Auto-approve (low value), manual review (medium), admin review (high)
-- **Manual review API** — Approve or reject pending reports with adjusted payouts
+- **Manual review API** — Approve or reject pending reports with adjusted payouts; policy re-checked before signing; rejection requires a reason
 - **Append-only audit log** — Every action recorded with correlation IDs
 - **SQLite persistence** — WAL mode, proper schema with indexes, survives restarts
 - **Real-time dashboard** — SSE feed with status filters (All / Signed / Pending / Rejected / Duplicates), silent background sync with smart diff (only changed items update), live connection indicator
@@ -60,7 +60,7 @@ cd owsbountybot
 npm install
 npm run setup   # Create OWS wallet, policy, agent key
 npm start       # http://localhost:4000
-npm test        # 15 integration tests
+npm test        # 18 integration tests
 ```
 
 ## Environment Variables
@@ -68,7 +68,7 @@ npm test        # 15 integration tests
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `PORT` | `4000` | Server port |
-| `BOUNTYBOT_ADMIN_TOKEN` | _(none)_ | Required to reset an existing program |
+| `BOUNTYBOT_ADMIN_TOKEN` | _(none)_ | Required for manual review, program reset, and re-creation |
 | `BOUNTYBOT_DB_PATH` | `data/bountybot.db` | SQLite database location |
 | `BOUNTYBOT_EVALUATION_DELAY_MS` | `1500` | Evaluation delay (set to `0` in tests) |
 | `CORS_ORIGIN` | `https://owsbountybot.shelmail.xyz` | Allowed CORS origin |
@@ -107,7 +107,7 @@ npm test        # 15 integration tests
 │       └── schemas.js       # Zod validation schemas
 ├── frontend/                # Vanilla HTML/CSS/JS dashboard
 ├── tests/
-│   └── server.test.js       # 15 integration tests
+│   └── server.test.js       # 18 integration tests
 └── package.json
 ```
 
@@ -119,13 +119,13 @@ npm test        # 15 integration tests
 | `/api/bounty` | GET | Program stats and spending counters |
 | `/api/report/submit` | POST | Submit a bug report |
 | `/api/report/:id` | GET | Report detail with audit trail |
-| `/api/report/:id/review` | POST | Approve or reject a pending report |
+| `/api/report/:id/review` | POST | Approve or reject a pending report (admin auth required) |
 | `/api/reports` | GET | List reports (`?status=`, `?duplicates=1`) |
-| `/api/reset` | POST | Clear all reports, transactions, and budgets |
+| `/api/reset` | POST | Clear all reports, transactions, and budgets (admin auth required) |
 | `/api/wallet` | GET | Treasury wallet address (EVM only) |
 | `/api/transactions` | GET | Payout authorization history |
 | `/api/policy` | GET | Active policy config + daily budget |
-| `/api/audit` | GET | Audit log entries |
+| `/api/audit` | GET | Audit log entries (`?entity_type=`, `?entity_id=`, `?correlation_id=`) |
 | `/api/events` | GET | SSE stream for real-time updates |
 
 ### Report Lifecycle
@@ -166,8 +166,11 @@ pending → evaluating → rejected
 - Input validation via Zod with 16kb body limit
 - Wallet address format validation per chain
 - Constant-time admin token comparison
+- Admin token (`x-admin-token`) required for review, reset, and program re-creation
+- Manual approval re-checks policy before signing (prevents exceeding limits)
+- Rejection requires a reason; zero-payout approvals blocked
 - Signatures never sent to clients
-- Audit trail for all state-changing actions
+- Audit trail for all state-changing actions with correlation IDs
 - OWS signing errors logged server-side only
 
 ## Contributing
