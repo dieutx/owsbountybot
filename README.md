@@ -66,16 +66,27 @@ git clone https://github.com/dieutx/owsbountybot.git
 cd owsbountybot
 npm install
 npm run setup   # Create OWS wallet, policy, agent key
-npm start       # http://localhost:4000
+BOUNTYBOT_ADMIN_TOKEN=admin npm start   # http://localhost:4000
 npm test        # 24 integration tests
 ```
+
+### Demo Flow
+
+1. Open **http://localhost:4000** — the program auto-initializes
+2. Click **"High-Quality Bug"** → **"Submit Report"** — report goes to `pending_review` (payout > $50)
+3. Click **"Admin"** button in the feed header → enter token `admin`
+4. Click **"Approve"** on the pending report → payout is signed with OWS
+5. Click **"Low-Quality Report"** → **"Submit"** — report is auto-rejected
+6. Click **"Reset All"** to clear and start over
+
+Admin token for the live demo: `admin`
 
 ## Environment Variables
 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `PORT` | `4000` | Server port |
-| `BOUNTYBOT_ADMIN_TOKEN` | _(none)_ | Required for manual review, program reset, and re-creation |
+| `BOUNTYBOT_ADMIN_TOKEN` | _(none)_ | Required for manual review, program reset, and re-creation. Demo: `admin` |
 | `BOUNTYBOT_DB_PATH` | `data/bountybot.db` | SQLite database location |
 | `BOUNTYBOT_EVALUATION_DELAY_MS` | `1500` | Evaluation delay (set to `0` in tests) |
 | `CORS_ORIGIN` | `https://owsbountybot.shelmail.xyz` | Allowed CORS origin |
