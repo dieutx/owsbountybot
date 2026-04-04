@@ -38,7 +38,7 @@ export const ReviewReportSchema = z.object({
 });
 
 export const ReportQuerySchema = z.object({
-  status: z.string().optional(),
+  status: z.enum(["pending", "evaluating", "pending_review", "approved", "rejected", "signed", "broadcasted", "confirmed", "failed", "probable_duplicate"]).optional(),
   duplicates: z.string().optional(),
   limit: z.coerce.number().int().positive().max(1000).optional().default(50),
 });
