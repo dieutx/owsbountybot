@@ -490,8 +490,53 @@ export function createApp() {
       return res.json(sanitizeReport(updated));
     } catch (err) {
       console.error("[OWS] Signing error:", err.message);
+      audit({ correlationId: cid, action: "signing_failed", entityType: "report", entityId: report.id, details: { error: err.message } });
       const updated = db.prepare("SELECT * FROM reports WHERE id = ?").get(report.id);
       return res.json(sanitizeReport(updated));
+    }
+  });
+
+  // === RETRY SIGNING ===
+
+  app.post("/api/report/:id/retry-sign", requireAdmin, (req, res) => {
+    const cid = correlationId();
+    const db = getDb();
+    const report = db.prepare("SELECT * FROM reports WHERE id = ?").get(req.params.id);
+    if (!report) return res.status(404).json({ error: "Report not found" });
+    if (report.status !== "approved") {
+      return res.status(409).json({ error: `Report is ${report.status}, not eligible for signing retry.` });
+    }
+
+    const program = db.prepare("SELECT * FROM programs WHERE id = ?").get(report.program_id);
+    try {
+      const payoutResult = authorizePayout("bountybot-treasury", report.chain, report.payout, report.reporter_wallet);
+      const nonce = crypto.randomUUID();
+
+      db.prepare(`UPDATE reports SET status = 'signed', signature = ?, authorization_id = ?, nonce = ?,
+        expires_at = ?, signed_at = ? WHERE id = ?`).run(
+        payoutResult.signature, payoutResult.authorizationId, nonce,
+        new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(), new Date().toISOString(), report.id,
+      );
+
+      const txId = generateId("TX");
+      db.prepare(`INSERT INTO transactions (id, report_id, program_id, amount, recipient, chain, token, status, authorization_id, signature, nonce, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, 'USDC', 'signed', ?, ?, ?, ?)`).run(
+        txId, report.id, program.id, report.payout, report.reporter_wallet, report.chain,
+        payoutResult.authorizationId, payoutResult.signature, nonce, new Date().toISOString(),
+      );
+
+      recordDailySpend(program.id, report.payout);
+      db.prepare("UPDATE programs SET total_authorized = total_authorized + ? WHERE id = ?").run(report.payout, program.id);
+
+      audit({ correlationId: cid, action: "signing_retry_success", entityType: "report", entityId: report.id, ip: clientIp(req), details: { payout: report.payout, txId } });
+
+      const updated = db.prepare("SELECT * FROM reports WHERE id = ?").get(report.id);
+      broadcast("payout_authorized", { report: sanitizeReport(updated) });
+      return res.json(sanitizeReport(updated));
+    } catch (err) {
+      console.error("[OWS] Signing retry error:", err.message);
+      audit({ correlationId: cid, action: "signing_retry_failed", entityType: "report", entityId: report.id, details: { error: err.message } });
+      return res.status(500).json({ error: "Signing failed. Check server logs." });
     }
   });
 
