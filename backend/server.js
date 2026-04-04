@@ -10,6 +10,7 @@ import { evaluateReport } from "./evaluator.js";
 import { generateFingerprints, storeFingerprints, findDuplicates } from "./lib/fingerprint.js";
 import { loadPolicy, evaluatePolicy, determineReviewLevel, recordDailySpend, tryRecordDailySpend, getDailySpent } from "./lib/policy.js";
 import { validate, CreateProgramSchema, SubmitReportSchema, ReviewReportSchema, ReportQuerySchema, AuditQuerySchema } from "./lib/schemas.js";
+import { detectCrossChain, getBridgeInfo } from "./lib/bridge.js";
 import {
   ALLOWED_SIGNING_CHAINS,
   normalizeChain,
@@ -153,10 +154,14 @@ function sanitizeTransaction(tx) {
     report_id: tx.report_id,
     amount: tx.amount,
     chain: tx.chain,
+    source_chain: tx.source_chain,
+    needs_bridge: !!tx.needs_bridge,
+    bridge_status: tx.bridge_status,
     token: tx.token,
     status: tx.status,
     authorization_id: tx.authorization_id,
     tx_hash: tx.tx_hash,
+    bridge_tx_hash: tx.bridge_tx_hash,
     created_at: tx.created_at,
     confirmed_at: tx.confirmed_at,
   };
@@ -470,7 +475,11 @@ export function createApp() {
     db.prepare("UPDATE reports SET status = 'approved', payout = ?, review_level = 'auto' WHERE id = ?")
       .run(evaluation.recommendedPayout, reportId);
 
+    // Detect cross-chain payout
+    const bridgeInfo = getBridgeInfo(normalizedChain);
+
     try {
+      // Sign on the recipient's chain (OWS wallet has keys for all chains)
       const payoutResult = authorizePayout("bountybot-treasury", normalizedChain, evaluation.recommendedPayout, reporterWallet);
       const nonce = crypto.randomUUID();
 
@@ -480,17 +489,17 @@ export function createApp() {
         nonce, new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(), new Date().toISOString(), reportId,
       );
 
-      // Record transaction
       const txId = generateId("TX");
-      db.prepare(`INSERT INTO transactions (id, report_id, program_id, amount, recipient, chain, token, status, authorization_id, signature, nonce, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, 'USDC', 'signed', ?, ?, ?, ?)`).run(
+      db.prepare(`INSERT INTO transactions (id, report_id, program_id, amount, recipient, chain, source_chain, needs_bridge, bridge_status, token, status, authorization_id, signature, nonce, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'USDC', 'signed', ?, ?, ?, ?)`).run(
         txId, reportId, program.id, evaluation.recommendedPayout, reporterWallet, normalizedChain,
+        bridgeInfo.sourceChain, bridgeInfo.needsBridge ? 1 : 0, bridgeInfo.needsBridge ? "pending" : null,
         payoutResult.authorizationId, payoutResult.signature, nonce, new Date().toISOString(),
       );
 
       db.prepare("UPDATE programs SET total_authorized = total_authorized + ? WHERE id = ?").run(evaluation.recommendedPayout, program.id);
 
-      audit({ correlationId: cid, action: "payout_signed", entityType: "report", entityId: reportId, details: { amount: evaluation.recommendedPayout, txId, authorizationId: payoutResult.authorizationId } });
+      audit({ correlationId: cid, action: "payout_signed", entityType: "report", entityId: reportId, details: { amount: evaluation.recommendedPayout, txId, authorizationId: payoutResult.authorizationId, chain: normalizedChain, ...(bridgeInfo.needsBridge ? { bridge: bridgeInfo } : {}) } });
 
       const updated = db.prepare("SELECT * FROM reports WHERE id = ?").get(reportId);
       broadcast("payout_authorized", { report: sanitizeReport(updated), transaction: sanitizeTransaction(db.prepare("SELECT * FROM transactions WHERE id = ?").get(txId)) });

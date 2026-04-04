@@ -296,10 +296,17 @@ function buildFeedItem(report) {
     const ref = report.tx_hash || report.authorization_id || "pending";
     const refLabel = report.tx_hash ? "Tx" : "Auth";
     const refText = ref.length > 24 ? ref.slice(0, 24) + "..." : ref;
-    item.appendChild(el("div", { className: "payout-info" }, [
+    const chain = (report.chain || "evm").toUpperCase();
+    const isCrossChain = report.chain && report.chain !== "evm";
+    const payoutChildren = [
       el("span", { className: "payout-amount", textContent: `$${report.payout} USDC` }),
-      el("span", { className: "tx-hash", textContent: `${refLabel}: ${refText}` }),
-    ]));
+      el("span", { className: "tag chain-tag", textContent: chain }),
+    ];
+    if (isCrossChain) {
+      payoutChildren.push(el("span", { className: "tag bridge-tag", textContent: "cross-chain" }));
+    }
+    payoutChildren.push(el("span", { className: "tx-hash", textContent: `${refLabel}: ${refText}` }));
+    item.appendChild(el("div", { className: "payout-info" }, payoutChildren));
   }
 
   if ((report.status === "pending_review" || report.status === "probable_duplicate") && adminToken) {
