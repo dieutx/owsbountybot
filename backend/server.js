@@ -188,7 +188,7 @@ function getProgramStats(programId) {
 
   const dailySpent = getDailySpent(programId);
   const policyConfig = program.policy_config ? JSON.parse(program.policy_config) : {};
-  const evmAccount = program.wallet_accounts ? JSON.parse(program.wallet_accounts).find(a => a.chainId?.startsWith("eip155")) : null;
+  const allAccounts = program.wallet_accounts ? JSON.parse(program.wallet_accounts).map(a => ({ chainId: a.chainId, address: a.address })) : [];
 
   return {
     id: program.id,
@@ -196,7 +196,7 @@ function getProgramStats(programId) {
     description: program.description,
     wallet: {
       name: program.wallet_name,
-      accounts: evmAccount ? [{ chainId: evmAccount.chainId, address: evmAccount.address }] : [],
+      accounts: allAccounts,
     },
     policy: policyConfig,
     total_authorized: program.total_authorized,
@@ -563,6 +563,7 @@ export function createApp() {
       .run(payout, reviewedBy, now, report.id);
 
     try {
+      const reviewBridge = getBridgeInfo(report.chain);
       const payoutResult = authorizePayout("bountybot-treasury", report.chain, payout, report.reporter_wallet);
       const nonce = crypto.randomUUID();
 
@@ -573,14 +574,15 @@ export function createApp() {
       );
 
       const txId = generateId("TX");
-      db.prepare(`INSERT INTO transactions (id, report_id, program_id, amount, recipient, chain, token, status, authorization_id, signature, nonce, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, 'USDC', 'signed', ?, ?, ?, ?)`).run(
+      db.prepare(`INSERT INTO transactions (id, report_id, program_id, amount, recipient, chain, source_chain, needs_bridge, bridge_status, token, status, authorization_id, signature, nonce, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'USDC', 'signed', ?, ?, ?, ?)`).run(
         txId, report.id, program.id, payout, report.reporter_wallet, report.chain,
+        reviewBridge.sourceChain, reviewBridge.needsBridge ? 1 : 0, reviewBridge.needsBridge ? "pending" : null,
         payoutResult.authorizationId, payoutResult.signature, nonce, new Date().toISOString(),
       );
 
       db.prepare("UPDATE programs SET total_authorized = total_authorized + ? WHERE id = ?").run(payout, program.id);
-      audit({ correlationId: cid, action: "manual_approve_signed", entityType: "report", entityId: report.id, actor: reviewedBy, details: { payout, txId } });
+      audit({ correlationId: cid, action: "manual_approve_signed", entityType: "report", entityId: report.id, actor: reviewedBy, details: { payout, txId, ...(reviewBridge.needsBridge ? { bridge: reviewBridge } : {}) } });
 
       const updated = db.prepare("SELECT * FROM reports WHERE id = ?").get(report.id);
       broadcast("payout_authorized", { report: sanitizeReport(updated) });
@@ -606,6 +608,7 @@ export function createApp() {
 
     const program = db.prepare("SELECT * FROM programs WHERE id = ?").get(report.program_id);
     try {
+      const retryBridge = getBridgeInfo(report.chain);
       const payoutResult = authorizePayout("bountybot-treasury", report.chain, report.payout, report.reporter_wallet);
       const nonce = crypto.randomUUID();
 
@@ -616,9 +619,10 @@ export function createApp() {
       );
 
       const txId = generateId("TX");
-      db.prepare(`INSERT INTO transactions (id, report_id, program_id, amount, recipient, chain, token, status, authorization_id, signature, nonce, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, 'USDC', 'signed', ?, ?, ?, ?)`).run(
+      db.prepare(`INSERT INTO transactions (id, report_id, program_id, amount, recipient, chain, source_chain, needs_bridge, bridge_status, token, status, authorization_id, signature, nonce, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'USDC', 'signed', ?, ?, ?, ?)`).run(
         txId, report.id, program.id, report.payout, report.reporter_wallet, report.chain,
+        retryBridge.sourceChain, retryBridge.needsBridge ? 1 : 0, retryBridge.needsBridge ? "pending" : null,
         payoutResult.authorizationId, payoutResult.signature, nonce, new Date().toISOString(),
       );
 
@@ -666,8 +670,7 @@ export function createApp() {
   app.get("/api/wallet", (req, res) => {
     const wallet = getWalletInfo("bountybot-treasury");
     if (!wallet) return res.status(404).json({ error: "Wallet not found" });
-    const evmAccount = wallet.accounts.find(a => a.chainId?.startsWith("eip155"));
-    res.json({ name: wallet.name, accounts: evmAccount ? [{ chainId: evmAccount.chainId, address: evmAccount.address }] : [] });
+    res.json({ name: wallet.name, accounts: wallet.accounts.map(a => ({ chainId: a.chainId, address: a.address })) });
   });
 
   app.get("/api/transactions", (req, res) => {

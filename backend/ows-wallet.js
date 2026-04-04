@@ -57,10 +57,10 @@ export function normalizeChain(chain) {
 export function detectChainFromAddress(address) {
   if (!address || typeof address !== "string") return null;
   if (/^0x[0-9a-fA-F]{40}$/.test(address)) return "evm";
-  if (/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(address)) return "solana";
-  if (/^T[1-9A-HJ-NP-Za-km-z]{33}$/.test(address)) return "tron";
+  if (/^T[1-9A-HJ-NP-Za-km-z]{33}$/.test(address)) return "tron";       // Tron before Solana (Tron is subset of Solana regex)
   if (/^(bc1[a-zA-HJ-NP-Z0-9]{25,87}|[13][a-km-zA-HJ-NP-Z1-9]{25,34})$/.test(address)) return "bitcoin";
   if (/^cosmos1[a-z0-9]{38}$/.test(address)) return "cosmos";
+  if (/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(address)) return "solana";   // Solana last (catch-all for base58)
   return null;
 }
 

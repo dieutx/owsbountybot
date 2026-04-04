@@ -113,14 +113,12 @@ function updateStats(data) {
   setText("dailyRemaining", `$${Math.max(0, dailyLimit - spent)}`);
   setText("pendingCount", data.pending_review_count ?? 0);
 
-  const evmAccount = data.wallet?.accounts?.find(a => (a.chainId || "").includes("eip155"));
-  if (evmAccount) {
-    const addr = evmAccount.address;
-    const walletEl = document.getElementById("walletAddr");
-    if (walletEl) {
-      walletEl.textContent = `${addr.slice(0, 6)}...${addr.slice(-4)}`;
-      walletEl.title = addr;
-    }
+  const accounts = data.wallet?.accounts || [];
+  const walletEl = document.getElementById("walletAddr");
+  if (walletEl && accounts.length > 0) {
+    const primary = accounts.find(a => (a.chainId || "").includes("eip155")) || accounts[0];
+    walletEl.textContent = `${primary.address.slice(0, 6)}...${primary.address.slice(-4)}`;
+    walletEl.title = accounts.map(a => `${a.chainId.split(":")[0]}: ${a.address}`).join("\n");
   }
 }
 
