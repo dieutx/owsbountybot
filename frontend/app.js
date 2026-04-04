@@ -256,6 +256,73 @@ function buildFeedItem(report) {
     ]));
   }
 
+  // Click to expand/collapse report details
+  item.addEventListener("click", async (e) => {
+    // Don't toggle if clicking a link or button
+    if (e.target.closest("a, button")) return;
+
+    const detail = item.querySelector(".report-detail");
+    if (detail) {
+      detail.remove();
+      return;
+    }
+
+    try {
+      const res = await fetch(`${API}/api/report/${report.id}`);
+      if (!res.ok) return;
+      const data = await res.json();
+
+      const detailDiv = el("div", { className: "report-detail" });
+
+      // Description
+      if (data.description_preview) {
+        detailDiv.appendChild(el("div", { className: "detail-section" }, [
+          el("span", { className: "detail-label", textContent: "Description" }),
+          el("p", { className: "detail-text", textContent: data.description_preview + (data.description_preview.length >= 120 ? "..." : "") }),
+        ]));
+      }
+
+      // Signals
+      if (data.signals && data.signals.length > 0) {
+        const signalsDiv = el("div", { className: "detail-section" }, [
+          el("span", { className: "detail-label", textContent: "Signals" }),
+        ]);
+        const signalList = el("div", { className: "signal-list" });
+        for (const sig of data.signals) {
+          const color = sig.weight > 0 ? "var(--green)" : "var(--red)";
+          signalList.appendChild(el("span", {
+            className: "signal-tag",
+            style: { color, borderColor: color },
+            textContent: `${sig.weight > 0 ? "+" : ""}${sig.weight} ${sig.id}`
+          }));
+        }
+        signalsDiv.appendChild(signalList);
+        detailDiv.appendChild(signalsDiv);
+      }
+
+      // Audit trail
+      if (data.audit && data.audit.length > 0) {
+        const auditDiv = el("div", { className: "detail-section" }, [
+          el("span", { className: "detail-label", textContent: "Audit Trail" }),
+        ]);
+        const timeline = el("div", { className: "audit-timeline" });
+        for (const entry of data.audit) {
+          const time = new Date(entry.at).toLocaleTimeString();
+          timeline.appendChild(el("div", { className: "audit-entry" }, [
+            el("span", { className: "audit-time", textContent: time }),
+            el("span", { className: "audit-action", textContent: entry.action.replace(/_/g, " ") }),
+          ]));
+        }
+        auditDiv.appendChild(timeline);
+        detailDiv.appendChild(auditDiv);
+      }
+
+      item.appendChild(detailDiv);
+    } catch {}
+  });
+
+  item.style.cursor = "pointer";
+
   return item;
 }
 

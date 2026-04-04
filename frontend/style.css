@@ -313,6 +313,50 @@ button[type="submit"]:disabled { opacity: 0.5; cursor: not-allowed; }
 }
 .evaluating .status { animation: pulse 1s infinite; }
 
+/* Report detail expand */
+.report-detail {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  animation: fadeIn 0.3s ease;
+}
+.detail-section { margin-bottom: 12px; }
+.detail-label {
+  display: block;
+  font-size: 10px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 6px;
+}
+.detail-text {
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text);
+  white-space: pre-wrap;
+}
+.signal-list { display: flex; flex-wrap: wrap; gap: 6px; }
+.signal-tag {
+  padding: 2px 8px;
+  border: 1px solid;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 600;
+}
+.audit-entry {
+  display: flex;
+  gap: 10px;
+  padding: 4px 0;
+  font-size: 11px;
+  border-left: 2px solid var(--border);
+  padding-left: 10px;
+  margin-left: 4px;
+}
+.audit-time { color: var(--text-dim); min-width: 70px; }
+.audit-action { color: var(--accent); }
+
+.feed-item:hover { border-color: var(--accent); }
+
 /* Scrollbar */
 .feed::-webkit-scrollbar { width: 6px; }
 .feed::-webkit-scrollbar-track { background: transparent; }
