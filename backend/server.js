@@ -35,6 +35,14 @@ const WALLET_PATTERNS = {
 const rateLimiter = new Map();
 const RATE_LIMIT = { maxRequests: 5, windowMs: 60_000 };
 
+// Stricter rate limiting for admin endpoints (brute-force protection)
+const adminRateLimiter = new Map();
+const ADMIN_RATE_LIMIT = { maxRequests: 3, windowMs: 60_000 };
+
+// SSE per-IP connection tracking (DoS protection)
+const ssePerIp = new Map();
+const MAX_SSE_PER_IP = 5;
+
 function rateLimit(req, res, next) {
   const ip = req.ip || req.socket.remoteAddress;
   const now = Date.now();
@@ -50,12 +58,30 @@ function rateLimit(req, res, next) {
   next();
 }
 
+function adminRateLimit(req, res, next) {
+  const ip = req.ip || req.socket.remoteAddress;
+  const now = Date.now();
+  const entry = adminRateLimiter.get(ip);
+  if (!entry || now - entry.start > ADMIN_RATE_LIMIT.windowMs) {
+    adminRateLimiter.set(ip, { start: now, count: 1 });
+    return next();
+  }
+  entry.count++;
+  if (entry.count > ADMIN_RATE_LIMIT.maxRequests) {
+    return res.status(429).json({ error: "Too many admin requests. Try again later." });
+  }
+  next();
+}
+
 setInterval(() => {
   const now = Date.now();
   for (const [ip, entry] of rateLimiter) {
     if (now - entry.start > RATE_LIMIT.windowMs) rateLimiter.delete(ip);
   }
-}, 300_000).unref();
+  for (const [ip, entry] of adminRateLimiter) {
+    if (now - entry.start > ADMIN_RATE_LIMIT.windowMs) adminRateLimiter.delete(ip);
+  }
+}, 60_000).unref();
 
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
@@ -212,15 +238,26 @@ export function createApp() {
     if (sseClients.size >= MAX_SSE_CLIENTS) {
       return res.status(503).json({ error: "Too many connections." });
     }
+    const ip = req.ip || req.socket.remoteAddress;
+    const ipCount = ssePerIp.get(ip) || 0;
+    if (ipCount >= MAX_SSE_PER_IP) {
+      return res.status(429).json({ error: "Too many SSE connections from this IP." });
+    }
+    ssePerIp.set(ip, ipCount + 1);
     res.writeHead(200, { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", Connection: "keep-alive" });
     res.write("event: connected\ndata: {}\n\n");
     sseClients.add(res);
-    req.on("close", () => sseClients.delete(res));
+    req.on("close", () => {
+      sseClients.delete(res);
+      const c = ssePerIp.get(ip) || 1;
+      if (c <= 1) ssePerIp.delete(ip);
+      else ssePerIp.set(ip, c - 1);
+    });
   });
 
   // === PROGRAM MANAGEMENT ===
 
-  app.post("/api/bounty/create", (req, res) => {
+  app.post("/api/bounty/create", adminRateLimit, (req, res) => {
     const cid = correlationId();
     const v = validate(CreateProgramSchema, req.body || {});
     if (!v.success) return res.status(400).json({ error: v.error });
@@ -424,7 +461,7 @@ export function createApp() {
 
   // === MANUAL REVIEW ===
 
-  app.post("/api/report/:id/review", requireAdmin, (req, res) => {
+  app.post("/api/report/:id/review", adminRateLimit, requireAdmin, (req, res) => {
     const cid = correlationId();
     const v = validate(ReviewReportSchema, req.body || {});
     if (!v.success) return res.status(400).json({ error: v.error });
@@ -552,7 +589,7 @@ export function createApp() {
   });
 
   // Reset: wipe all reports/transactions for the active program (demo convenience)
-  app.post("/api/reset", requireAdmin, (req, res) => {
+  app.post("/api/reset", adminRateLimit, requireAdmin, (req, res) => {
     const cid = correlationId();
     const program = getActiveProgram();
     if (!program) return res.status(404).json({ error: "No program to reset." });
