@@ -52,8 +52,8 @@ export function storeFingerprints(reportId, fingerprints) {
   }
 }
 
-// Find potential duplicates — returns { isDuplicate, score, matches }
-export function findDuplicates(fingerprints, excludeReportId = null) {
+// Find potential duplicates — accepts object: { fingerprints, excludeReportId, title, programId }
+export function findDuplicates({ fingerprints, excludeReportId = null, title = null, programId = null }) {
   const db = getDb();
   const matchWeights = {
     title_hash: 0.4,
@@ -63,24 +63,53 @@ export function findDuplicates(fingerprints, excludeReportId = null) {
     combined: 0.6,
   };
 
-  // Find all reports that share any fingerprint
   const candidateScores = new Map(); // reportId -> { score, matches }
 
+  // Step 1: Fingerprint-based matching (scoped to program if provided)
   for (const fp of fingerprints) {
-    let query = "SELECT DISTINCT report_id FROM fingerprints WHERE type = ? AND value = ?";
-    const params = [fp.type, fp.value];
+    let query, params;
+    if (programId) {
+      query = "SELECT DISTINCT f.report_id FROM fingerprints f JOIN reports r ON f.report_id = r.id WHERE f.type = ? AND f.value = ? AND r.program_id = ?";
+      params = [fp.type, fp.value, programId];
+    } else {
+      query = "SELECT DISTINCT report_id FROM fingerprints WHERE type = ? AND value = ?";
+      params = [fp.type, fp.value];
+    }
     if (excludeReportId) {
-      query += " AND report_id != ?";
+      query += programId ? " AND f.report_id != ?" : " AND report_id != ?";
       params.push(excludeReportId);
     }
     const matches = db.prepare(query).all(...params);
     const weight = matchWeights[fp.type] || 0.1;
 
     for (const match of matches) {
-      const existing = candidateScores.get(match.report_id) || { score: 0, matches: [] };
+      const rid = match.report_id;
+      const existing = candidateScores.get(rid) || { score: 0, matches: [] };
       existing.score += weight;
       existing.matches.push(fp.type);
-      candidateScores.set(match.report_id, existing);
+      candidateScores.set(rid, existing);
+    }
+  }
+
+  // Step 2: Fuzzy title matching (scoped to program, last 30 days)
+  if (title && programId) {
+    let recentQuery = "SELECT id, title FROM reports WHERE program_id = ? AND created_at > date('now', '-30 days')";
+    const recentParams = [programId];
+    if (excludeReportId) {
+      recentQuery += " AND id != ?";
+      recentParams.push(excludeReportId);
+    }
+    const recentReports = db.prepare(recentQuery).all(...recentParams);
+
+    for (const r of recentReports) {
+      const sim = titleSimilarity(title, r.title);
+      if (sim < 0.5) continue;
+      const existing = candidateScores.get(r.id) || { score: 0, matches: [] };
+      // Tiered weight based on similarity strength
+      const weight = sim >= 0.9 ? 0.55 : sim >= 0.8 ? 0.45 : 0.2;
+      existing.score += weight;
+      existing.matches.push("fuzzy_title");
+      candidateScores.set(r.id, existing);
     }
   }
 
@@ -98,12 +127,12 @@ export function findDuplicates(fingerprints, excludeReportId = null) {
     }
   }
 
-  // Normalize score to 0-1 range (max possible ~1.8)
+  // Normalize score to 0-1 (max possible is ~2.15 with all fingerprints + fuzzy)
   const normalizedScore = Math.min(1, bestData.score / 1.2);
 
   return {
-    isDuplicate: normalizedScore >= 0.8,       // strong match
-    isProbable: normalizedScore >= 0.4,         // weak match worth flagging
+    isDuplicate: normalizedScore >= 0.8,
+    isProbable: normalizedScore >= 0.4,
     score: Math.round(normalizedScore * 100) / 100,
     matches: bestData.matches,
     duplicateOf: bestId,

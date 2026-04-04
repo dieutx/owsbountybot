@@ -19,11 +19,14 @@ export function audit({ correlationId, action, entityType, entityId, actor = "sy
 
 export function getAuditLog({ entityType, entityId, correlationId, limit = 100 } = {}) {
   const db = getDb();
-  if (correlationId) {
-    return db.prepare("SELECT * FROM audit_log WHERE correlation_id = ? ORDER BY id DESC LIMIT ?").all(correlationId, limit);
-  }
-  if (entityType && entityId) {
-    return db.prepare("SELECT * FROM audit_log WHERE entity_type = ? AND entity_id = ? ORDER BY id DESC LIMIT ?").all(entityType, entityId, limit);
-  }
-  return db.prepare("SELECT * FROM audit_log ORDER BY id DESC LIMIT ?").all(limit);
+  const clauses = [];
+  const params = [];
+
+  if (correlationId) { clauses.push("correlation_id = ?"); params.push(correlationId); }
+  if (entityType) { clauses.push("entity_type = ?"); params.push(entityType); }
+  if (entityId) { clauses.push("entity_id = ?"); params.push(entityId); }
+
+  const where = clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : "";
+  params.push(limit);
+  return db.prepare(`SELECT * FROM audit_log ${where} ORDER BY id DESC LIMIT ?`).all(...params);
 }

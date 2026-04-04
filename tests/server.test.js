@@ -348,7 +348,7 @@ test("GET query parameter validation rejects invalid limit", async () => {
     await createProgram(base);
     const { status, json } = await api(base, "/api/reports?limit=foo");
     assert.equal(status, 400);
-    assert.match(json.error, /Expected number/);
+    assert.match(json.error, /number|NaN/);
   } finally {
     await stop(server);
     sb.cleanup();

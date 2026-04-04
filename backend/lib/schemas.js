@@ -28,6 +28,13 @@ export const ReviewReportSchema = z.object({
   reviewedBy: z.string().min(1).max(100).optional().default("admin"),
   reason: z.string().max(1000).optional(),
   adjustedPayout: z.number().nonnegative().optional(),
+}).superRefine((data, ctx) => {
+  if (data.action === "reject" && !data.reason) {
+    ctx.addIssue({ code: "custom", path: ["reason"], message: "Reason is required when rejecting a report." });
+  }
+  if (data.action === "approve" && data.adjustedPayout === 0) {
+    ctx.addIssue({ code: "custom", path: ["adjustedPayout"], message: "Cannot approve with zero payout." });
+  }
 });
 
 export const ReportQuerySchema = z.object({

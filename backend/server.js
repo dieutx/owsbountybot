@@ -314,7 +314,7 @@ export function createApp() {
     // Step 1: Duplicate detection
     const fingerprints = generateFingerprints({ title, description });
     storeFingerprints(reportId, fingerprints);
-    const dupResult = findDuplicates(fingerprints, reportId);
+    const dupResult = findDuplicates({ fingerprints, excludeReportId: reportId, title, programId: program.id });
 
     if (dupResult.isDuplicate) {
       db.prepare("UPDATE reports SET status = 'rejected', reasoning = ?, duplicate_of = ?, duplicate_score = ?, evaluated_at = ? WHERE id = ?")
@@ -448,13 +448,23 @@ export function createApp() {
       return res.json(sanitizeReport(updated));
     }
 
-    // Approve: sign the payout
+    // Approve: re-check policy before signing (prevents approving payouts that violate limits)
     const payout = adjustedPayout ?? report.payout;
+    const program = db.prepare("SELECT * FROM programs WHERE id = ?").get(report.program_id);
+    const policy = loadPolicy(program.id);
+    const policyCheck = evaluatePolicy(policy, {
+      severity: report.severity, payout, chain: report.chain,
+      reporterWallet: report.reporter_wallet, programId: program.id,
+    });
+    if (!policyCheck.allowed) {
+      const denyReasons = policyCheck.denied.map(d => d.reason).join("; ");
+      return res.status(409).json({ error: `Policy check failed: ${denyReasons}` });
+    }
+
     db.prepare("UPDATE reports SET status = 'approved', payout = ?, reviewed_by = ?, reviewed_at = ? WHERE id = ?")
       .run(payout, reviewedBy, now, report.id);
 
     try {
-      const program = db.prepare("SELECT * FROM programs WHERE id = ?").get(report.program_id);
       const payoutResult = authorizePayout("bountybot-treasury", report.chain, payout, report.reporter_wallet);
       const nonce = crypto.randomUUID();
 
