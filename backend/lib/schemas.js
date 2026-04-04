@@ -62,6 +62,13 @@ export const ReviewReportSchema = z.object({
   }
 });
 
+export const PolicySimulationSchema = z.object({
+  severity: z.enum(["critical", "high", "medium", "low"]),
+  payout: z.number().positive(),
+  chain: z.string().default("evm"),
+  reporterWallet: z.string().min(1).max(100),
+});
+
 // Validate and return { success, data, error }
 export function validate(schema, data) {
   const result = schema.safeParse(data);

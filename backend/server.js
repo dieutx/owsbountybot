@@ -9,7 +9,7 @@ import { audit, getAuditLog } from "./lib/audit.js";
 import { evaluateReport } from "./evaluator.js";
 import { generateFingerprints, storeFingerprints, findDuplicates } from "./lib/fingerprint.js";
 import { loadPolicy, savePolicy, serializePolicyConfig, evaluatePolicy, determineReviewLevel, recordDailySpend, getDailySpent } from "./lib/policy.js";
-import { validate, CreateProgramSchema, SubmitReportSchema, ReviewReportSchema } from "./lib/schemas.js";
+import { validate, CreateProgramSchema, SubmitReportSchema, ReviewReportSchema, PolicySimulationSchema } from "./lib/schemas.js";
 import {
   ALLOWED_SIGNING_CHAINS,
   normalizeChain,
@@ -603,6 +603,57 @@ export function createApp() {
     const config = loadPolicy(program.id);
     const spent = getDailySpent(program.id);
     res.json({ ...config, dailySpent: spent, dailyRemaining: Math.max(0, (config.dailyLimit || 500) - spent) });
+  });
+
+  app.post("/api/policy/simulate", (req, res) => {
+    const v = validate(PolicySimulationSchema, req.body || {});
+    if (!v.success) return res.status(400).json({ error: v.error });
+
+    const program = getActiveProgram();
+    if (!program) return res.status(404).json({ error: "No program" });
+
+    const normalizedChain = normalizeChain(v.data.chain);
+    if (!normalizedChain) {
+      return res.status(400).json({ error: `Unsupported chain. Allowed: ${Object.keys(ALLOWED_SIGNING_CHAINS).join(", ")}` });
+    }
+
+    const walletPattern = WALLET_PATTERNS[normalizedChain];
+    if (walletPattern && !walletPattern.test(v.data.reporterWallet)) {
+      return res.status(400).json({ error: `Invalid wallet address format for "${normalizedChain}".` });
+    }
+
+    const policy = loadPolicy(program.id);
+    const result = evaluatePolicy(policy, {
+      severity: v.data.severity,
+      payout: v.data.payout,
+      chain: normalizedChain,
+      reporterWallet: v.data.reporterWallet,
+      programId: program.id,
+    });
+    const dailySpent = getDailySpent(program.id);
+    const projectedSpent = dailySpent + v.data.payout;
+    const reviewLevel = determineReviewLevel(policy, v.data.payout);
+
+    let summary;
+    if (!result.allowed) {
+      summary = `Blocked by ${result.denied.length} policy rule${result.denied.length === 1 ? "" : "s"}.`;
+    } else if (reviewLevel === "auto") {
+      summary = "Allowed and eligible for auto-approval thresholds.";
+    } else {
+      summary = `Allowed but would route to ${reviewLevel} review.`;
+    }
+
+    res.json({
+      allowed: result.allowed,
+      normalizedChain,
+      review_level: reviewLevel,
+      denied: result.denied,
+      results: result.results,
+      daily_spent: dailySpent,
+      projected_daily_spent: projectedSpent,
+      daily_remaining_after: Math.max(0, (policy.dailyLimit || 500) - projectedSpent),
+      summary,
+    });
   });
 
   app.get("/api/audit", (req, res) => {

@@ -396,6 +396,54 @@ button[type="submit"]:disabled { opacity: 0.5; cursor: not-allowed; }
   display: grid;
   gap: 8px;
 }
+.simulator-form {
+  display: grid;
+  gap: 10px;
+}
+.simulator-result {
+  margin-top: 12px;
+}
+.sim-result-card {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface2);
+  padding: 12px;
+}
+.sim-result-card.allowed {
+  border-color: var(--green);
+  background: var(--green-glow);
+}
+.sim-result-card.blocked {
+  border-color: var(--red);
+  background: var(--red-glow);
+}
+.sim-summary {
+  font-size: 12px;
+  margin-bottom: 8px;
+}
+.sim-meta {
+  font-size: 11px;
+  color: var(--text-dim);
+  line-height: 1.6;
+  margin-bottom: 8px;
+}
+.sim-rules {
+  display: grid;
+  gap: 6px;
+}
+.sim-rule {
+  font-size: 11px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.25);
+}
+.sim-rule.denied {
+  border: 1px solid rgba(255, 82, 82, 0.4);
+  color: #ffd7d7;
+}
+.sim-rule.allowed {
+  border: 1px solid rgba(0, 230, 118, 0.25);
+}
 .account-item {
   padding: 10px 12px;
   border: 1px solid var(--border);

@@ -48,6 +48,7 @@ Researchers submit bug reports. The system evaluates quality, detects duplicates
 - **SQLite persistence** — WAL mode, proper schema with indexes, survives restarts
 - **Real-time dashboard** — SSE feed with status filters (All / Signed / Pending / Rejected / Duplicates), silent background sync with smart diff (only changed items update), live connection indicator
 - **Governance visibility** — Policy summary, treasury accounts, audit trail, and in-dashboard manual review controls
+- **What-if simulator** — Preview whether a payout would pass policy and which rule would block it before approval
 - **Demo mode** — 16 randomized sample reports across 3 quality tiers (High / Medium / Low / Random), different each click
 - **Reset** — One-click feed reset clears all reports, transactions, and budget counters
 - **Multi-chain submissions** — Demo form supports EVM and Solana wallet flows end-to-end
@@ -109,7 +110,7 @@ npm test        # integration tests
 │       └── schemas.js       # Zod validation schemas
 ├── frontend/                # Vanilla HTML/CSS/JS dashboard
 ├── tests/
-│   └── server.test.js       # 15 integration tests
+│   └── server.test.js       # 28 integration tests
 └── package.json
 ```
 
@@ -124,9 +125,10 @@ npm test        # integration tests
 | `/api/report/:id/review` | POST | Approve or reject a pending report (`x-admin-token` required) |
 | `/api/reports` | GET | List reports (`?status=`, `?duplicates=1`) |
 | `/api/reset` | POST | Clear all reports, transactions, and budgets (`x-admin-token` required) |
-| `/api/wallet` | GET | Treasury wallet address (EVM only) |
+| `/api/wallet` | GET | Treasury wallet addresses for the configured chains |
 | `/api/transactions` | GET | Payout authorization history |
 | `/api/policy` | GET | Active policy config + daily budget |
+| `/api/policy/simulate` | POST | Preview whether a hypothetical payout would pass policy |
 | `/api/audit` | GET | Audit log entries (`?entity_type=`, `?entity_id=`, `?correlation_id=`) |
 | `/api/events` | GET | SSE stream for real-time updates |
 

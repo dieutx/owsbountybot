@@ -86,6 +86,19 @@ async function resetProgram(base, headers = {}) {
   });
 }
 
+async function simulatePolicy(base, overrides = {}) {
+  return api(base, "/api/policy/simulate", {
+    method: "POST",
+    body: JSON.stringify({
+      severity: "high",
+      payout: 55,
+      chain: "evm",
+      reporterWallet: "0x742d35Cc6634C0532925a3b844Bc9e7595f2bD38",
+      ...overrides,
+    }),
+  });
+}
+
 // === Tests ===
 
 test("full flow: submit -> evaluate -> pending_review (high value auto threshold)", async () => {
@@ -495,6 +508,77 @@ test("allowedChains on the program policy is enforced", async () => {
     assert.equal(status, 200);
     assert.equal(json.status, "rejected");
     assert.match(json.reasoning, /Chain "evm" not in allowed list/);
+  } finally {
+    await stop(server);
+    sb.cleanup();
+  }
+});
+
+test("policy simulator previews an allowed payout", async () => {
+  const sb = sandbox();
+  const { server, base } = await startServer(sb);
+  try {
+    await createProgram(base);
+
+    const { status, json } = await simulatePolicy(base, {
+      severity: "low",
+      payout: 15,
+    });
+    assert.equal(status, 200);
+    assert.equal(json.allowed, true);
+    assert.equal(json.review_level, "auto");
+    assert.equal(json.normalizedChain, "evm");
+    assert.equal(json.daily_spent, 0);
+    assert.equal(json.projected_daily_spent, 15);
+    assert.equal(json.daily_remaining_after, 485);
+    assert.equal(json.denied.length, 0);
+  } finally {
+    await stop(server);
+    sb.cleanup();
+  }
+});
+
+test("policy simulator rejects invalid wallet format", async () => {
+  const sb = sandbox();
+  const { server, base } = await startServer(sb);
+  try {
+    await createProgram(base);
+
+    const { status, json } = await simulatePolicy(base, {
+      reporterWallet: "not-a-wallet",
+    });
+    assert.equal(status, 400);
+    assert.match(json.error, /Invalid wallet address format/);
+  } finally {
+    await stop(server);
+    sb.cleanup();
+  }
+});
+
+test("policy simulator reflects projected daily-limit violations", async () => {
+  const sb = sandbox();
+  const { server, base } = await startServer(sb);
+  try {
+    await createProgram(base, {
+      dailyLimit: 20,
+      reviewThresholds: { auto: 200, manual: 500, admin: 1000 },
+    });
+
+    const first = await submitReport(base, { severity: "low" });
+    assert.equal(first.status, 200);
+    assert.equal(first.json.status, "signed");
+
+    const { status, json } = await simulatePolicy(base, {
+      severity: "low",
+      payout: 15,
+      reporterWallet: "0x742d35Cc6634C0532925a3b844Bc9e7595f2bD40",
+    });
+    assert.equal(status, 200);
+    assert.equal(json.allowed, false);
+    assert.ok(json.denied.some(rule => rule.rule === "daily_limit"));
+    assert.equal(json.daily_spent, first.json.payout);
+    assert.equal(json.projected_daily_spent, first.json.payout + 15);
+    assert.equal(json.daily_remaining_after, 0);
   } finally {
     await stop(server);
     sb.cleanup();

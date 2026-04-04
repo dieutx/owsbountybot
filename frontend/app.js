@@ -52,6 +52,11 @@ function setWalletPlaceholder() {
   document.getElementById("reporterWallet").placeholder = CHAIN_PLACEHOLDERS[chain] || CHAIN_PLACEHOLDERS.evm;
 }
 
+function setSimulatorWalletPlaceholder() {
+  const chain = document.getElementById("simChain").value;
+  document.getElementById("simWallet").placeholder = CHAIN_PLACEHOLDERS[chain] || CHAIN_PLACEHOLDERS.evm;
+}
+
 function shortAddress(address) {
   if (!address) return "—";
   return address.length > 14 ? `${address.slice(0, 6)}...${address.slice(-4)}` : address;
@@ -63,6 +68,10 @@ function formatTime(value) {
 
 function formatThreshold(value) {
   return value == null || !Number.isFinite(value) ? "∞" : `$${value}`;
+}
+
+function formatRuleName(rule) {
+  return (rule || "policy_check").replace(/_/g, " ");
 }
 
 function showMessage(id, textContent, kind = "error") {
@@ -80,6 +89,7 @@ function hideMessage(id) {
 
 async function init() {
   setWalletPlaceholder();
+  setSimulatorWalletPlaceholder();
 
   try {
     const res = await fetch(`${API}/api/bounty`);
@@ -263,6 +273,74 @@ async function loadPolicySummary() {
       ]));
     });
   } catch {}
+}
+
+function showSimulationResult(payload) {
+  const target = document.getElementById("simulatorResult");
+  if (!target) return;
+  target.textContent = "";
+
+  const card = el("div", { className: `sim-result-card ${payload.allowed ? "allowed" : "blocked"}` }, [
+    el("div", { className: "sim-summary" }, [
+      el("strong", { textContent: payload.allowed ? "Allowed" : "Blocked" }),
+      text(` · ${payload.summary}`),
+    ]),
+    el("div", {
+      className: "sim-meta",
+      textContent: `Chain: ${String(payload.normalizedChain || "—").toUpperCase()} · Review: ${payload.review_level || "auto"} · Spent today: $${payload.daily_spent ?? 0} · Projected: $${payload.projected_daily_spent ?? 0} · Remaining after: $${payload.daily_remaining_after ?? 0}`,
+    }),
+  ]);
+
+  const rules = el("div", { className: "sim-rules" });
+  if (Array.isArray(payload.denied) && payload.denied.length > 0) {
+    payload.denied.forEach((entry) => {
+      rules.appendChild(el("div", { className: "sim-rule denied" }, [
+        el("strong", { textContent: formatRuleName(entry.rule) }),
+        text(` · ${entry.reason}`),
+      ]));
+    });
+  } else {
+    rules.appendChild(el("div", {
+      className: "sim-rule allowed",
+      textContent: "All blocking policy checks passed for this payout preview.",
+    }));
+  }
+
+  card.appendChild(rules);
+  target.appendChild(card);
+}
+
+async function runPolicySimulation(event) {
+  event.preventDefault();
+  hideMessage("simulatorMessage");
+
+  const chain = document.getElementById("simChain").value;
+  const payout = Number(document.getElementById("simPayout").value);
+  const severity = document.getElementById("simSeverity").value;
+  const walletField = document.getElementById("simWallet");
+  const reporterWallet = walletField.value.trim() || walletField.placeholder || CHAIN_PLACEHOLDERS[chain] || CHAIN_PLACEHOLDERS.evm;
+
+  if (!Number.isFinite(payout) || payout <= 0) {
+    showMessage("simulatorMessage", "Payout must be greater than zero.");
+    return;
+  }
+
+  try {
+    const res = await fetch(`${API}/api/policy/simulate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chain, payout, severity, reporterWallet }),
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      showMessage("simulatorMessage", json.error || "Simulation failed.");
+      return;
+    }
+
+    showSimulationResult(json);
+  } catch {
+    showMessage("simulatorMessage", "Network error while running the policy simulation.");
+  }
 }
 
 function formatAuditDetails(details) {
@@ -712,6 +790,8 @@ document.getElementById("demoRandom").addEventListener("click", fillRandomReport
 document.getElementById("resetBtn").addEventListener("click", resetAll);
 document.getElementById("refreshAuditBtn").addEventListener("click", loadAuditLog);
 document.getElementById("reportChain").addEventListener("change", setWalletPlaceholder);
+document.getElementById("simChain").addEventListener("change", setSimulatorWalletPlaceholder);
+document.getElementById("policySimulatorForm").addEventListener("submit", runPolicySimulation);
 document.getElementById("adminToken").addEventListener("input", () => {
   hideMessage("adminMessage");
   loadReports(true);

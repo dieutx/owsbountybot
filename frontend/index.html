@@ -148,6 +148,34 @@
         <h2>Policy & Treasury</h2>
         <div id="policySummary" class="detail-list"></div>
         <div class="treasury-section">
+          <div class="section-label">What-If Policy Simulator</div>
+          <div id="simulatorMessage" class="form-message" hidden></div>
+          <form id="policySimulatorForm" class="simulator-form">
+            <div class="review-row">
+              <select id="simChain" class="review-input">
+                <option value="evm" selected>EVM</option>
+                <option value="solana">Solana</option>
+              </select>
+              <select id="simSeverity" class="review-input">
+                <option value="critical">Critical</option>
+                <option value="high" selected>High</option>
+                <option value="medium">Medium</option>
+                <option value="low">Low</option>
+              </select>
+            </div>
+            <div class="review-row">
+              <input type="number" id="simPayout" class="review-input" min="1" step="1" value="55" placeholder="Payout">
+              <input type="text" id="simWallet" class="review-input" placeholder="Reporter wallet">
+            </div>
+            <button type="submit" class="inline-action approve">Run Simulation</button>
+          </form>
+          <div id="simulatorResult" class="simulator-result">
+            <div class="feed-empty">
+              <p>No simulation yet.</p>
+            </div>
+          </div>
+        </div>
+        <div class="treasury-section">
           <div class="section-label">Treasury Accounts</div>
           <div id="treasuryAccounts" class="account-list"></div>
         </div>
