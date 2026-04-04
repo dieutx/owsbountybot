@@ -63,6 +63,7 @@ Tests use Node's built-in test runner with sandboxed temp directories. Each test
 - State-changing actions must create audit log entries
 - New report statuses must be added to the `CHECK` constraint in `schema.sql`
 - No inline `onclick` attributes in HTML — bind via `addEventListener` in `app.js`
+- No `prompt()` or `alert()` popups — use inline inputs and toast notifications instead
 - Demo reports pool is in `app.js` — add new examples to `GOOD_REPORTS`, `MEDIUM_REPORTS`, or `BAD_REPORTS` arrays; include non-EVM wallets (Solana, Tron) for multi-chain testing
 - Block explorer URLs are in `EXPLORERS` object in `app.js` — add new chains there when extending chain support
 - Chain auto-detection order matters in `ows-wallet.js` `detectChainFromAddress` — check more specific patterns (Tron) before broader ones (Solana base58 catch-all)

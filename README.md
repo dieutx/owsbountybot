@@ -50,7 +50,7 @@ Researchers submit bug reports. The system evaluates quality, detects duplicates
 - **Demo mode** — 18 randomized sample reports (including multi-chain Solana/Tron wallets) across 3 quality tiers (High / Medium / Low / Random), different each click
 - **Reset** — One-click feed reset clears all reports, transactions, and budget counters
 - **Click-to-expand** — Click any report to see full description + audit trail timeline
-- **Admin review panel** — Inline approve/reject buttons for pending reports (requires admin token)
+- **Admin review panel** — Inline approve/reject with adjustable payout amount and inline rejection reason (no popups)
 - **CSV export** — `GET /api/reports/export` (admin-only) downloads all reports as CSV
 - **Health check** — `GET /api/health` for load balancers and monitoring
 - **Retry signing** — `POST /api/report/:id/retry-sign` for reports stuck in approved state
@@ -77,7 +77,7 @@ npm test        # 24 integration tests
 1. Open **http://localhost:4000** — the program auto-initializes
 2. Click **"High-Quality Bug"** → **"Submit Report"** — report goes to `pending_review` (payout > $50)
 3. Click **"Admin"** button in the feed header → enter token `admin`
-4. Click **"Approve"** on the pending report → payout is signed with OWS
+4. Adjust the payout amount if needed, click **"Approve"** → payout is signed with OWS
 5. Click **"Low-Quality Report"** → **"Submit"** — report is auto-rejected
 6. Click **"Reset All"** to clear and start over
 
