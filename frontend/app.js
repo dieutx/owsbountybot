@@ -47,16 +47,55 @@ async function init() {
   connectSSE();
 }
 
+let sseConnected = false;
+
 function connectSSE() {
   const evtSource = new EventSource(`${API}/api/events`);
+  evtSource.addEventListener("connected", () => { sseConnected = true; });
   evtSource.addEventListener("report_submitted", (e) => addFeedItem(JSON.parse(e.data)));
   evtSource.addEventListener("report_evaluated", (e) => { updateFeedItem(JSON.parse(e.data)); refreshStats(); });
   evtSource.addEventListener("payout_authorized", (e) => { const d = JSON.parse(e.data); updateFeedItem(d.report); refreshStats(); });
   evtSource.addEventListener("program_created", (e) => { updateStats(JSON.parse(e.data)); });
-  evtSource.onerror = () => {
-    // SSE disconnected — refresh feed as fallback
-    setTimeout(() => { loadReports(); refreshStats(); }, 3000);
-  };
+  evtSource.addEventListener("program_reset", () => { loadReports(); refreshStats(); });
+  evtSource.onerror = () => { sseConnected = false; };
+}
+
+// Auto-refresh with countdown (fallback when SSE is down, also keeps stats fresh)
+const REFRESH_INTERVAL = 15; // seconds
+let refreshCountdown = REFRESH_INTERVAL;
+
+setInterval(() => {
+  refreshCountdown--;
+  const timerEl = document.getElementById("refreshTimer");
+  if (timerEl) {
+    if (!sseConnected) {
+      timerEl.textContent = "SSE offline · refresh in " + refreshCountdown + "s";
+      timerEl.style.color = "var(--orange)";
+    } else {
+      timerEl.textContent = "sync in " + refreshCountdown + "s";
+      timerEl.style.color = "";
+    }
+  }
+  if (refreshCountdown <= 0) {
+    refreshCountdown = REFRESH_INTERVAL;
+    refreshStats();
+    if (!sseConnected) loadReports();
+  }
+}, 1000);
+
+// Reset
+async function resetAll() {
+  if (!confirm("Clear all reports and transactions? This cannot be undone.")) return;
+  try {
+    const res = await fetch(`${API}/api/reset`, { method: "POST" });
+    if (res.ok) {
+      document.getElementById("feed").textContent = "";
+      document.getElementById("feed").appendChild(
+        el("div", { className: "feed-empty" }, [el("p", { textContent: "Feed cleared. Submit a new bug report!" })])
+      );
+      refreshStats();
+    }
+  } catch {}
 }
 
 function updateStats(data) {
@@ -121,8 +160,13 @@ function addFeedItem(report, prepend = true) {
 
 function updateFeedItem(report) {
   const existing = document.getElementById(`report-${report.id}`);
-  if (existing) existing.replaceWith(buildFeedItem(report));
-  else addFeedItem(report);
+  if (existing) {
+    const newItem = buildFeedItem(report);
+    newItem.classList.add("updated");
+    existing.replaceWith(newItem);
+  } else {
+    addFeedItem(report);
+  }
 }
 
 function buildFeedItem(report) {
@@ -361,6 +405,7 @@ document.getElementById("demoGood").addEventListener("click", fillGoodReport);
 document.getElementById("demoMedium").addEventListener("click", fillMediumReport);
 document.getElementById("demoBad").addEventListener("click", fillBadReport);
 document.getElementById("demoRandom").addEventListener("click", fillRandomReport);
+document.getElementById("resetBtn").addEventListener("click", resetAll);
 document.querySelectorAll(".filter-btn").forEach(btn => {
   btn.addEventListener("click", () => setFilter(btn.dataset.filter));
 });

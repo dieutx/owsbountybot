@@ -90,7 +90,13 @@
 
       <!-- Right: Live Feed -->
       <div class="panel feed-panel">
-        <h2>Live Activity Feed</h2>
+        <div class="feed-header">
+          <h2>Live Activity Feed</h2>
+          <div class="feed-header-right">
+            <span id="refreshTimer" class="refresh-timer"></span>
+            <button class="reset-btn" id="resetBtn">Reset All</button>
+          </div>
+        </div>
         <div class="filters">
           <button class="filter-btn active" data-filter="all">All</button>
           <button class="filter-btn" data-filter="signed">Signed</button>

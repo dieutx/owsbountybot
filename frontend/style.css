@@ -75,6 +75,19 @@ header { text-align: center; padding: 32px 0 24px; }
 }
 .panel h2 { font-size: 16px; margin-bottom: 20px; color: var(--text); }
 
+/* Feed header */
+.feed-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+.feed-header h2 { margin-bottom: 0; }
+.feed-header-right { display: flex; align-items: center; gap: 10px; }
+.refresh-timer { font-size: 10px; color: var(--text-dim); }
+.reset-btn {
+  padding: 4px 12px; border: 1px solid var(--border); border-radius: 6px;
+  background: transparent; color: var(--text-dim); font-family: inherit;
+  font-size: 11px; cursor: pointer; transition: all 0.2s;
+}
+.reset-btn:hover { border-color: var(--red); color: var(--red); }
+.reset-btn:active { background: var(--red-glow); }
+
 .form-message {
   margin-bottom: 16px;
   padding: 10px 12px;
@@ -284,6 +297,11 @@ button[type="submit"]:disabled { opacity: 0.5; cursor: not-allowed; }
   from { opacity: 0; transform: translateY(-10px); }
   to { opacity: 1; transform: translateY(0); }
 }
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.feed-item.updated { animation: fadeIn 0.4s ease; }
 @keyframes pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.5; }

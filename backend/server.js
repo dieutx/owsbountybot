@@ -526,6 +526,24 @@ export function createApp() {
     res.json(rows);
   });
 
+  // Reset: wipe all reports/transactions for the active program (demo convenience)
+  app.post("/api/reset", (req, res) => {
+    const cid = correlationId();
+    const program = getActiveProgram();
+    if (!program) return res.status(404).json({ error: "No program to reset." });
+
+    const db = getDb();
+    db.prepare("DELETE FROM fingerprints WHERE report_id IN (SELECT id FROM reports WHERE program_id = ?)").run(program.id);
+    db.prepare("DELETE FROM transactions WHERE program_id = ?").run(program.id);
+    db.prepare("DELETE FROM reports WHERE program_id = ?").run(program.id);
+    db.prepare("DELETE FROM daily_budgets WHERE program_id = ?").run(program.id);
+    db.prepare("UPDATE programs SET total_authorized = 0, total_paid = 0 WHERE id = ?").run(program.id);
+
+    audit({ correlationId: cid, action: "program_reset", entityType: "program", entityId: program.id, ip: clientIp(req) });
+    broadcast("program_reset", {});
+    res.json({ ok: true, message: "All reports, transactions, and budgets cleared." });
+  });
+
   return app;
 }
 
