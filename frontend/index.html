@@ -35,6 +35,10 @@
         <span class="stat-label">Daily Budget Left</span>
       </div>
       <div class="stat">
+        <span class="stat-value" id="pendingCount">0</span>
+        <span class="stat-label">Pending Review</span>
+      </div>
+      <div class="stat">
         <span class="stat-value" id="walletAddr">—</span>
         <span class="stat-label">Treasury (EVM)</span>
       </div>
@@ -85,6 +89,13 @@
       <!-- Right: Live Feed -->
       <div class="panel feed-panel">
         <h2>Live Activity Feed</h2>
+        <div class="filters">
+          <button class="filter-btn active" data-filter="all" onclick="setFilter('all')">All</button>
+          <button class="filter-btn" data-filter="signed" onclick="setFilter('signed')">Signed</button>
+          <button class="filter-btn" data-filter="pending_review" onclick="setFilter('pending_review')">Pending</button>
+          <button class="filter-btn" data-filter="rejected" onclick="setFilter('rejected')">Rejected</button>
+          <button class="filter-btn" data-filter="probable_duplicate" onclick="setFilter('probable_duplicate')">Duplicates</button>
+        </div>
         <div id="feed" class="feed">
           <div class="feed-empty">
             <p>No reports yet. Submit a bug to see the agent in action!</p>

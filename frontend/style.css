@@ -51,7 +51,7 @@ header { text-align: center; padding: 32px 0 24px; }
 /* Stats Bar */
 .stats-bar {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   gap: 16px;
   margin-bottom: 24px;
 }
@@ -166,6 +166,33 @@ button[type="submit"]:disabled { opacity: 0.5; cursor: not-allowed; }
 .demo-btn.good:hover { border-color: var(--green); color: var(--green); }
 .demo-btn.bad:hover { border-color: var(--red); color: var(--red); }
 
+/* Filters */
+.filters { display: flex; gap: 6px; margin-bottom: 12px; flex-wrap: wrap; }
+.filter-btn {
+  padding: 5px 12px; border: 1px solid var(--border); border-radius: 6px;
+  background: var(--surface2); color: var(--text-dim); font-family: inherit;
+  font-size: 11px; cursor: pointer; transition: all 0.2s;
+}
+.filter-btn.active { border-color: var(--accent); color: var(--accent); background: var(--accent-glow); }
+.filter-btn:hover { border-color: var(--accent); color: var(--text); }
+
+/* Tags */
+.tag {
+  display: inline-block; margin-left: 6px; padding: 1px 6px; border-radius: 4px;
+  background: var(--surface2); border: 1px solid var(--border); font-size: 10px; color: var(--accent);
+}
+.tag.asset { color: var(--orange); }
+
+/* Duplicate flag */
+.duplicate-flag {
+  margin-top: 6px; padding: 6px 10px; border-radius: 6px;
+  background: rgba(255, 215, 64, 0.1); border: 1px solid rgba(255, 215, 64, 0.3);
+  font-size: 11px; color: var(--yellow);
+}
+
+/* Review actions */
+.review-actions { margin-top: 8px; padding: 6px 0; font-size: 11px; }
+
 /* Feed */
 .feed { max-height: 600px; overflow-y: auto; }
 .feed-empty { text-align: center; padding: 60px 20px; color: var(--text-dim); }
@@ -179,10 +206,13 @@ button[type="submit"]:disabled { opacity: 0.5; cursor: not-allowed; }
   transition: border-color 0.3s;
 }
 .feed-item.signed { border-color: var(--green); background: var(--green-glow); }
-.feed-item.paid { border-color: var(--green); background: var(--green-glow); }
-.feed-item.approved_unsigned { border-color: var(--orange); background: rgba(255, 171, 64, 0.18); }
+.feed-item.confirmed { border-color: var(--green); background: var(--green-glow); }
+.feed-item.approved { border-color: #66bb6a; background: rgba(102, 187, 106, 0.15); }
+.feed-item.pending-review { border-color: var(--orange); background: rgba(255, 171, 64, 0.12); }
+.feed-item.probable-duplicate { border-color: var(--yellow); background: rgba(255, 215, 64, 0.1); }
 .feed-item.rejected { border-color: var(--red); background: var(--red-glow); }
 .feed-item.evaluating { border-color: var(--accent); background: var(--accent-glow); }
+.feed-item.failed { border-color: var(--red); background: var(--red-glow); }
 
 .feed-item .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
 .feed-item .title { font-weight: 600; font-size: 13px; }
@@ -194,10 +224,13 @@ button[type="submit"]:disabled { opacity: 0.5; cursor: not-allowed; }
   text-transform: uppercase;
 }
 .status.signed { background: var(--green); color: #000; }
-.status.paid { background: var(--green); color: #000; }
-.status.approved_unsigned { background: var(--orange); color: #000; }
+.status.confirmed { background: var(--green); color: #000; }
+.status.approved { background: #66bb6a; color: #000; }
+.status.pending-review { background: var(--orange); color: #000; }
+.status.probable-duplicate { background: var(--yellow); color: #000; }
 .status.rejected { background: var(--red); color: #fff; }
 .status.evaluating { background: var(--accent); color: #fff; }
+.status.failed { background: var(--red); color: #fff; }
 
 .feed-item .meta { font-size: 11px; color: var(--text-dim); margin-bottom: 8px; }
 .feed-item .reasoning {

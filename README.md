@@ -1,8 +1,8 @@
 # BountyBot
 
-Automated bug bounty payout approval agent powered by the [Open Wallet Standard (OWS)](https://openwallet.sh).
+Automated bug bounty triage and payout authorization agent powered by the [Open Wallet Standard (OWS)](https://openwallet.sh).
 
-Submit a bug report. The agent evaluates quality and severity. If approved, a payout authorization is cryptographically signed inside the OWS vault. Private keys never leave the vault.
+Researchers submit bug reports. The system evaluates quality, detects duplicates, enforces spending policies, and cryptographically signs payout authorizations — all without exposing private keys.
 
 [![Live Demo](https://img.shields.io/badge/Live_Demo-owsbountybot.shelmail.xyz-6c5ce7)](https://owsbountybot.shelmail.xyz)
 ![OWS](https://img.shields.io/badge/OWS-Powered-6c5ce7)
@@ -15,47 +15,40 @@ Submit a bug report. The agent evaluates quality and severity. If approved, a pa
 
 **https://owsbountybot.shelmail.xyz**
 
-Click "Fill High-Quality Bug" to see the agent approve and sign a $150 payout in seconds. Click "Fill Low-Quality Report" to see a rejection.
-
 ## How It Works
 
 ```
-📝 Bug Report → 🧠 Evaluate → 🔒 Policy Check → ✍️ Sign Approval → 📦 Relay / Broadcast
+📝 Bug Report → 🔍 Duplicate Check → 🧠 Evaluate → 🔒 Policy Check → 👤 Review → ✍️ Sign → 📦 Relay
 ```
 
 1. Researcher submits a bug report with severity, description, and wallet address
-2. Evaluator scores the report (0–10) based on quality signals: reproduction steps, impact analysis, PoC, known vulnerability class
-3. App-level spending limits and OWS chain-guard policy are checked before any signing occurs
-4. If approved, a payout authorization is signed inside the OWS vault — the private key is decrypted in hardened memory and wiped after use
-5. A downstream relayer can broadcast the real payout transaction
+2. **Fingerprinting** detects exact and probable duplicates using layered hashing + trigram similarity
+3. **Evaluator** scores quality (0–10) with confidence level, extracts vulnerability class and affected asset
+4. **Policy engine** checks composable rules: daily budget, per-severity caps, per-reporter limits, chain allowlists, cooldowns
+5. **Review routing** sends low-value payouts to auto-approve, medium to manual review, high to admin review
+6. If approved, OWS **signs** the payout authorization inside the vault — private key decrypted in hardened memory, wiped after use
+7. A downstream relayer can broadcast the real transaction
 
-## Why OWS
+## What This Is / Is Not
 
-BountyBot demonstrates the core OWS value proposition: **an autonomous agent that can authorize real payments, constrained by policies it cannot override**.
+**Is:** A bug bounty triage + payout authorization system. It evaluates reports, enforces spending policies, and signs cryptographic authorizations.
 
-| OWS Primitive | How BountyBot Uses It |
-|---------------|----------------------|
-| `createWallet` | Multi-chain treasury (EVM, Solana, Bitcoin, Cosmos, Tron, TON, Sui, Filecoin) |
-| `createPolicy` | Chain allowlist enforced at the signing layer — only EVM and Solana |
-| `createApiKey` | Policy-gated agent access — the agent key is scoped to the treasury wallet |
-| `signMessage` | Payout approvals signed in the vault; key decrypted in hardened memory, wiped after use |
-
-The agent **cannot**:
-- Exceed per-bug or daily spending limits
-- Sign on unauthorized chains
-- Access the raw private key
-- Reset the program without an admin token
+**Is not:** A bug-finding tool, a vulnerability scanner, or a full on-chain payment processor. The current demo signs authorization messages but does not broadcast transactions.
 
 ## Features
 
-- **Quality scoring** — Reports scored 0–10 based on technical signals (PoC, reproduction steps, impact, vulnerability class)
-- **Duplicate detection** — Prevents double payouts for the same finding, persisted across restarts
-- **Persistent state** — Reports, approvals, counters, and duplicate history survive process restarts
-- **Policy enforcement** — App-level per-bug and daily caps + OWS chain-guard policy
-- **Safe reconfiguration** — Existing programs are reset-protected via `BOUNTYBOT_ADMIN_TOKEN`
-- **Real-time dashboard** — Live SSE feed showing submissions, evaluations, and payout approvals
-- **Error feedback** — Frontend displays validation errors and server failures inline
-- **Demo mode** — One-click buttons to fill sample high-quality and low-quality reports
+- **Quality scoring** — Reports scored 0–10 with confidence percentage
+- **Vulnerability extraction** — Auto-detects vuln class (SQLi, XSS, CSRF, etc.) and affected endpoints
+- **Layered duplicate detection** — Title hash, description hash, vuln type, affected asset, combined fingerprint + trigram similarity
+- **Probable duplicate** state — Ambiguous cases flagged for review instead of hard-rejected
+- **Composable policy engine** — Per-severity caps, daily budget, per-reporter limits, chain allowlists, cooldowns
+- **Multi-step review** — Auto-approve (low value), manual review (medium), admin review (high)
+- **Manual review API** — Approve or reject pending reports with adjusted payouts
+- **Append-only audit log** — Every action recorded with correlation IDs
+- **SQLite persistence** — WAL mode, proper schema with indexes, survives restarts
+- **Real-time dashboard** — SSE feed with status filters and decision context
+- **Zod validation** — All inputs validated with structured error responses
+- **Security hardened** — CORS, CSP, rate limiting, constant-time token comparison, signature redaction
 
 ## Quick Start
 
@@ -63,48 +56,56 @@ The agent **cannot**:
 git clone https://github.com/dieutx/owsbountybot.git
 cd owsbountybot
 npm install
-npm run setup   # Create OWS wallet, chain-guard policy, and agent API key
+npm run setup   # Create OWS wallet, policy, agent key
 npm start       # http://localhost:4000
+npm test        # 15 integration tests
 ```
 
-### Environment Variables
+## Environment Variables
 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `PORT` | `4000` | Server port |
 | `BOUNTYBOT_ADMIN_TOKEN` | _(none)_ | Required to reset an existing program |
-| `BOUNTYBOT_STATE_PATH` | `data/state.json` | Path to persistent state file |
-| `BOUNTYBOT_EVALUATION_DELAY_MS` | `1500` | Evaluation delay for demo effect (set to `0` in tests) |
+| `BOUNTYBOT_DB_PATH` | `data/bountybot.db` | SQLite database location |
+| `BOUNTYBOT_EVALUATION_DELAY_MS` | `1500` | Evaluation delay (set to `0` in tests) |
+| `CORS_ORIGIN` | `https://owsbountybot.shelmail.xyz` | Allowed CORS origin |
 | `OWS_VAULT_PATH` | _(OWS default)_ | Custom OWS vault location |
 
 ## Architecture
 
 ```
-┌─────────────┐     ┌──────────────────┐     ┌─────────────┐
-│  Dashboard   │────▶│  Express API     │────▶│  OWS SDK    │
-│  (SSE)       │◀────│  + Evaluator     │◀────│  (signing)  │
-└─────────────┘     └──────────────────┘     └─────────────┘
-     :4000              server.js              ~/.ows/wallets
-                        store.js (JSON)
+┌─────────────┐     ┌────────────────────────────┐     ┌─────────────┐
+│  Dashboard   │────▶│  Express API               │────▶│  OWS SDK    │
+│  (SSE)       │◀────│  ├─ evaluator.js            │◀────│  (signing)  │
+└─────────────┘     │  ├─ lib/fingerprint.js       │     └─────────────┘
+     :4000          │  ├─ lib/policy.js            │       ~/.ows/wallets
+                    │  ├─ lib/audit.js             │
+                    │  ├─ lib/schemas.js (Zod)     │
+                    │  └─ db/database.js (SQLite)  │
+                    └────────────────────────────┘
 ```
 
 ## Project Structure
 
 ```
 ├── backend/
-│   ├── server.js        # Express API with SSE real-time updates
-│   ├── evaluator.js     # Quality scoring and duplicate detection
-│   ├── ows-wallet.js    # OWS wallet, policy, and signing operations
-│   ├── setup-wallet.js  # One-time OWS setup script
-│   └── store.js         # Persisted JSON state store
+│   ├── server.js            # Express API, routes, SSE
+│   ├── evaluator.js         # Quality scoring, confidence, vuln detection
+│   ├── ows-wallet.js        # OWS wallet, policy, signing
+│   ├── setup-wallet.js      # One-time OWS setup CLI
+│   ├── db/
+│   │   ├── database.js      # SQLite connection + schema init
+│   │   └── schema.sql       # Table definitions + indexes
+│   └── lib/
+│       ├── audit.js         # Append-only audit logging
+│       ├── fingerprint.js   # Duplicate detection engine
+│       ├── ids.js           # ID + correlation ID generation
+│       ├── policy.js        # Composable policy rule engine
+│       └── schemas.js       # Zod validation schemas
+├── frontend/                # Vanilla HTML/CSS/JS dashboard
 ├── tests/
-│   └── server.test.js   # Integration tests (persistence, payouts, validation)
-├── frontend/
-│   ├── index.html       # Dashboard
-│   ├── app.js           # Real-time UI logic (SSE, DOM-safe rendering)
-│   ├── style.css        # Dark theme
-│   └── favicon.svg      # Shield icon
-├── CONTRIBUTING.md
+│   └── server.test.js       # 15 integration tests
 └── package.json
 ```
 
@@ -112,57 +113,63 @@ npm start       # http://localhost:4000
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/api/bounty/create` | POST | Initialize bounty program + OWS wallet |
-| `/api/bounty` | GET | Program info, stats, and spending counters |
-| `/api/report/submit` | POST | Submit a bug report for evaluation |
-| `/api/reports` | GET | List all reports (newest first) |
-| `/api/wallet` | GET | Treasury wallet info |
-| `/api/policy` | GET | Policy limits and daily remaining budget |
+| `/api/bounty/create` | POST | Initialize bounty program |
+| `/api/bounty` | GET | Program stats and spending counters |
+| `/api/report/submit` | POST | Submit a bug report |
+| `/api/report/:id` | GET | Report detail with audit trail |
+| `/api/report/:id/review` | POST | Approve or reject a pending report |
+| `/api/reports` | GET | List reports (supports `?status=` filter) |
+| `/api/wallet` | GET | Treasury wallet address (EVM only) |
 | `/api/transactions` | GET | Payout authorization history |
-| `/api/events` | GET | SSE stream for real-time dashboard updates |
+| `/api/policy` | GET | Active policy config + daily budget |
+| `/api/audit` | GET | Audit log entries |
+| `/api/events` | GET | SSE stream for real-time updates |
 
-### Example: Submit a Report
+### Report Lifecycle
 
-```bash
-curl -X POST https://owsbountybot.shelmail.xyz/api/report/submit \
-  -H "Content-Type: application/json" \
-  -d '{
-    "title": "SQL Injection in /api/users",
-    "severity": "critical",
-    "description": "Steps to reproduce: inject payload. Impact: full DB access. Proof of concept included.",
-    "reporterWallet": "0x742d35Cc6634C0532925a3b844Bc9e7595f2bD38"
-  }'
+```
+pending → evaluating → rejected
+                     → probable_duplicate (→ manual review)
+                     → pending_review (→ approve → signed → broadcasted → confirmed)
+                     →                (→ reject)
+                     → approved → signed → broadcasted → confirmed
+                                                      → failed
 ```
 
 ### Severity Payouts
 
-| Severity | Range | Quality Multiplier |
-|----------|-------|--------------------|
-| Critical | $80 – $150 | score / 10 |
-| High | $40 – $80 | score / 10 |
-| Medium | $15 – $40 | score / 10 |
-| Low | $5 – $15 | score / 10 |
+| Severity | Range | Auto-Approve |
+|----------|-------|-------------|
+| Critical | $80 – $150 | Above $50 requires review |
+| High | $40 – $80 | Above $50 requires review |
+| Medium | $15 – $40 | Auto if quality sufficient |
+| Low | $5 – $15 | Auto if quality sufficient |
 
-## Testing
+## OWS Integration
 
-```bash
-npm test
-```
+| Primitive | Usage |
+|-----------|-------|
+| `createWallet` | Multi-chain treasury (EVM, Solana, Bitcoin, Cosmos, Tron, TON, Sui, Filecoin) |
+| `createPolicy` | Chain allowlist enforced at signing layer |
+| `createApiKey` | Policy-gated agent access scoped to treasury wallet |
+| `signMessage` | Payout authorizations signed in vault; key wiped after use |
 
-Tests use Node's built-in test runner with sandboxed temp directories. No external test framework needed.
+## Security
 
-Coverage includes:
-- Signed approvals are not reported as paid transfers
-- Program reset clears reports, transactions, and counters
-- State persists across process restarts
-- Duplicate detection survives restarts
-- Policy limit validation on program creation
-- Error responses for invalid severity, chain, and missing fields
-- Frontend error display for failed submissions
+- CORS restricted to production origin
+- CSP, X-Frame-Options, X-Content-Type-Options headers
+- Rate limiting: 5 requests/min per IP on submit
+- SSE connection cap: 200
+- Input validation via Zod with 16kb body limit
+- Wallet address format validation per chain
+- Constant-time admin token comparison
+- Signatures never sent to clients
+- Audit trail for all state-changing actions
+- OWS signing errors logged server-side only
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for setup instructions and guidelines.
+See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 

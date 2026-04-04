@@ -1,7 +1,5 @@
 # Contributing to BountyBot
 
-Thanks for your interest in contributing! This project was built for the [OWS Hackathon 2026](https://hackathon.openwallet.sh) and we welcome improvements.
-
 ## Getting Started
 
 ```bash
@@ -10,6 +8,7 @@ cd owsbountybot
 npm install
 npm run setup   # creates OWS wallet + policy
 npm start       # http://localhost:4000
+npm test        # runs integration tests
 ```
 
 ## Running Tests
@@ -18,49 +17,49 @@ npm start       # http://localhost:4000
 npm test
 ```
 
-Tests use Node's built-in test runner (`node:test`) with sandboxed temp directories. No external test dependencies required.
+Tests use Node's built-in test runner with sandboxed temp directories. Each test gets its own SQLite database and OWS vault. No external dependencies needed.
 
-## Project Structure
+## Project Layout
 
 | Path | Purpose |
 |------|---------|
-| `backend/server.js` | Express API, SSE broadcasting, route handlers |
-| `backend/evaluator.js` | Bug report quality scoring engine |
-| `backend/ows-wallet.js` | OWS wallet/policy/signing operations |
-| `backend/store.js` | Persistent JSON state store |
-| `frontend/` | Static dashboard (vanilla JS, no build step) |
+| `backend/server.js` | Express routes, SSE, middleware |
+| `backend/evaluator.js` | Quality scoring engine |
+| `backend/ows-wallet.js` | OWS wallet/signing operations |
+| `backend/db/schema.sql` | SQLite table definitions |
+| `backend/db/database.js` | Database connection management |
+| `backend/lib/fingerprint.js` | Duplicate detection engine |
+| `backend/lib/policy.js` | Composable spending policy rules |
+| `backend/lib/audit.js` | Append-only audit logging |
+| `backend/lib/schemas.js` | Zod input validation schemas |
+| `backend/lib/ids.js` | ID generation utilities |
+| `frontend/` | Static dashboard (vanilla JS) |
 | `tests/` | Integration tests |
+
+## Key Architecture Decisions
+
+- **SQLite** for persistence (WAL mode, better-sqlite3). No ORM — raw SQL for clarity.
+- **Zod** for input validation. Schemas defined in `lib/schemas.js`.
+- **No build step** for frontend. Plain HTML/CSS/JS.
+- **ESM modules** throughout (`"type": "module"` in package.json).
+- **Deterministic evaluator** — no LLM calls. Pattern matching + heuristics only.
+- **Signatures never sent to clients** — stripped in `sanitizeReport`/`sanitizeTransaction`.
 
 ## How to Contribute
 
-1. **Fork** the repo and create a feature branch
-2. **Write tests** for new functionality (`tests/server.test.js`)
-3. **Run `npm test`** and ensure all tests pass
-4. **Keep PRs focused** — one fix or feature per PR
-5. **Open a PR** with a clear description of what and why
+1. Fork the repo and create a feature branch
+2. Write tests for new functionality
+3. Run `npm test` — all tests must pass
+4. Keep PRs focused — one fix or feature per PR
+5. Open a PR with a clear description
 
 ## Guidelines
 
-- No build tools required — the frontend is plain HTML/CSS/JS
-- The backend is ESM (`"type": "module"` in package.json)
-- OWS SDK is a native binary via NAPI — it works on macOS and Linux (x64/arm64)
-- State is persisted to `data/state.json` — this file is gitignored
-- Keep the frontend XSS-safe: use `textContent` and `document.createTextNode()`, never `innerHTML`
-
-## Areas for Improvement
-
-- [ ] Rate limiting on `/api/report/submit`
-- [ ] CORS restriction for production deployment
-- [ ] Wallet address format validation per chain
-- [ ] Collision-resistant report IDs (add random suffix)
-- [ ] WebSocket support as SSE alternative
-- [ ] Docker container for easy deployment
-- [ ] Integration with `signAndSend` for real on-chain payouts
-
-## Code of Conduct
-
-Be respectful. Focus on the code. Keep it constructive.
+- Frontend must stay XSS-safe: `textContent` and `createTextNode` only, never set HTML from user data
+- All new API inputs must have Zod schemas
+- State-changing actions must create audit log entries
+- New report statuses must be added to the `CHECK` constraint in `schema.sql`
 
 ## License
 
-By contributing, you agree that your contributions will be licensed under the MIT License.
+By contributing, you agree your contributions are licensed under MIT.

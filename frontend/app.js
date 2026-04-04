@@ -1,9 +1,7 @@
 const API = window.location.origin;
-
-// State
 let programInitialized = false;
+let currentFilter = "all";
 
-// Safe DOM helpers
 function el(tag, attrs = {}, children = []) {
   const node = document.createElement(tag);
   for (const [k, v] of Object.entries(attrs)) {
@@ -11,6 +9,7 @@ function el(tag, attrs = {}, children = []) {
     else if (k === "className") node.className = v;
     else if (k === "style" && typeof v === "object") Object.assign(node.style, v);
     else if (k === "title") node.title = v;
+    else if (k === "onclick") node.addEventListener("click", v);
     else node.setAttribute(k, v);
   }
   for (const child of children) {
@@ -22,36 +21,6 @@ function el(tag, attrs = {}, children = []) {
 
 function text(str) { return document.createTextNode(str); }
 
-function formatStatus(status) {
-  return status.replace(/_/g, " ");
-}
-
-function setFormMessage(type, message) {
-  const messageEl = document.getElementById("formMessage");
-  if (!message) {
-    messageEl.hidden = true;
-    messageEl.textContent = "";
-    messageEl.className = "form-message";
-    return;
-  }
-
-  messageEl.hidden = false;
-  messageEl.textContent = message;
-  messageEl.className = `form-message ${type}`;
-}
-
-async function parseJsonResponse(res) {
-  const textBody = await res.text();
-  if (!textBody) return null;
-
-  try {
-    return JSON.parse(textBody);
-  } catch {
-    return null;
-  }
-}
-
-// Initialize program on load
 async function init() {
   try {
     const res = await fetch(`${API}/api/bounty`);
@@ -60,69 +29,54 @@ async function init() {
       updateStats(await res.json());
       loadReports();
     }
-  } catch {
-    // Not initialized yet
-  }
+  } catch {}
 
   if (!programInitialized) {
-    const res = await fetch(`${API}/api/bounty/create`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name: "BountyBot Demo Program",
-        description: "Automated bug bounty with OWS-powered payouts",
-        maxPerBug: 150,
-        dailyLimit: 500,
-      }),
-    });
-    if (res.ok) {
-      programInitialized = true;
-      updateStats(await parseJsonResponse(res));
-    } else {
-      const payload = await parseJsonResponse(res);
-      setFormMessage("error", payload?.error || "Failed to initialize the demo bounty program.");
-    }
+    try {
+      const res = await fetch(`${API}/api/bounty/create`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "BountyBot Demo Program", maxPerBug: 150, dailyLimit: 500 }),
+      });
+      if (res.ok) {
+        programInitialized = true;
+        updateStats(await res.json());
+      }
+    } catch {}
   }
-
   connectSSE();
 }
 
-// SSE for real-time updates
 function connectSSE() {
   const evtSource = new EventSource(`${API}/api/events`);
-  evtSource.addEventListener("program_created", (e) => {
-    programInitialized = true;
-    updateStats(JSON.parse(e.data));
-    loadReports();
-  });
-  evtSource.addEventListener("report_submitted", (e) => {
-    addFeedItem(JSON.parse(e.data));
-  });
-  evtSource.addEventListener("report_evaluated", (e) => {
-    updateFeedItem(JSON.parse(e.data));
-    refreshStats();
-  });
-  const payoutHandler = (e) => {
-    const { report } = JSON.parse(e.data);
-    updateFeedItem(report);
-    refreshStats();
-  };
-  evtSource.addEventListener("payout_authorized", payoutHandler);
-  evtSource.addEventListener("payout_sent", payoutHandler);
+  evtSource.addEventListener("report_submitted", (e) => addFeedItem(JSON.parse(e.data)));
+  evtSource.addEventListener("report_evaluated", (e) => { updateFeedItem(JSON.parse(e.data)); refreshStats(); });
+  evtSource.addEventListener("payout_authorized", (e) => { const d = JSON.parse(e.data); updateFeedItem(d.report); refreshStats(); });
+  evtSource.addEventListener("program_created", (e) => { updateStats(JSON.parse(e.data)); });
 }
 
 function updateStats(data) {
-  document.getElementById("totalAuthorized").textContent = `$${data.totalAuthorized ?? data.totalPaid ?? 0}`;
-  document.getElementById("reportsCount").textContent = data.reportsCount || 0;
-  document.getElementById("dailyRemaining").textContent = `$${(data.policy?.dailyLimit || 500) - (data.dailySpent || 0)}`;
+  setText("totalAuthorized", `$${data.total_authorized ?? 0}`);
+  setText("reportsCount", data.reports_count ?? 0);
+  const dailyLimit = data.policy?.dailyLimit || 500;
+  const spent = data.daily_spent ?? 0;
+  setText("dailyRemaining", `$${Math.max(0, dailyLimit - spent)}`);
+  setText("pendingCount", data.pending_review_count ?? 0);
 
-  const evmAccount = data.wallet?.accounts?.find(a => a.chainId.includes("eip155"));
+  const evmAccount = data.wallet?.accounts?.find(a => (a.chainId || "").includes("eip155"));
   if (evmAccount) {
     const addr = evmAccount.address;
     const walletEl = document.getElementById("walletAddr");
-    walletEl.textContent = `${addr.slice(0, 6)}...${addr.slice(-4)}`;
-    walletEl.title = addr;
+    if (walletEl) {
+      walletEl.textContent = `${addr.slice(0, 6)}...${addr.slice(-4)}`;
+      walletEl.title = addr;
+    }
   }
+}
+
+function setText(id, val) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = val;
 }
 
 async function refreshStats() {
@@ -134,12 +88,17 @@ async function refreshStats() {
 
 async function loadReports() {
   try {
-    const res = await fetch(`${API}/api/reports`);
+    const url = currentFilter === "all" ? `${API}/api/reports` : `${API}/api/reports?status=${currentFilter}`;
+    const res = await fetch(url);
     if (res.ok) {
       const reports = await res.json();
       const feed = document.getElementById("feed");
       feed.textContent = "";
-      reports.forEach(r => addFeedItem(r, false));
+      if (reports.length === 0) {
+        feed.appendChild(el("div", { className: "feed-empty" }, [el("p", { textContent: "No reports match this filter." })]));
+      } else {
+        reports.forEach(r => addFeedItem(r, false));
+      }
     }
   } catch {}
 }
@@ -148,86 +107,93 @@ function addFeedItem(report, prepend = true) {
   const feed = document.getElementById("feed");
   const empty = feed.querySelector(".feed-empty");
   if (empty) empty.remove();
-
+  if (currentFilter !== "all" && report.status !== currentFilter) return;
   const item = buildFeedItem(report);
-  if (prepend) {
-    feed.prepend(item);
-  } else {
-    feed.appendChild(item);
-  }
+  if (prepend) feed.prepend(item); else feed.appendChild(item);
 }
 
 function updateFeedItem(report) {
   const existing = document.getElementById(`report-${report.id}`);
-  if (existing) {
-    const newItem = buildFeedItem(report);
-    existing.replaceWith(newItem);
-  } else {
-    addFeedItem(report);
-  }
+  if (existing) existing.replaceWith(buildFeedItem(report));
+  else addFeedItem(report);
 }
 
 function buildFeedItem(report) {
-  const severityColors = { critical: "#ff5252", high: "#ffab40", medium: "#ffd740", low: "#8888a0" };
-  const qualityScore = report.qualityScore || 0;
-  const qualityColor = qualityScore >= 7 ? "#00e676" : qualityScore >= 4 ? "#ffab40" : "#ff5252";
-  const qualityPct = (qualityScore / 10) * 100;
+  const sevColors = { critical: "#ff5252", high: "#ffab40", medium: "#ffd740", low: "#8888a0" };
+  const qs = report.quality_score ?? 0;
+  const conf = report.confidence ?? 0;
+  const qColor = qs >= 7 ? "#00e676" : qs >= 4 ? "#ffab40" : "#ff5252";
+  const qPct = (qs / 10) * 100;
+  const statusClass = (report.status || "").replace(/_/g, "-");
 
-  const item = el("div", { className: `feed-item ${report.status}`, id: `report-${report.id}` });
+  const item = el("div", { className: `feed-item ${statusClass}`, id: `report-${report.id}` });
 
-  // Header row
-  const header = el("div", { className: "header" }, [
+  item.appendChild(el("div", { className: "header" }, [
     el("span", { className: "title", textContent: report.title }),
-    el("span", { className: `status ${report.status}`, textContent: formatStatus(report.status) }),
-  ]);
-  item.appendChild(header);
+    el("span", { className: `status ${statusClass}`, textContent: (report.status || "").replace(/_/g, " ") }),
+  ]));
 
-  // Meta row
   const meta = el("div", { className: "meta" });
-  meta.appendChild(el("span", { style: { color: severityColors[report.severity] }, textContent: report.severity.toUpperCase() }));
-  meta.appendChild(text(` · ${report.id} · ${new Date(report.createdAt).toLocaleTimeString()}`));
+  meta.appendChild(el("span", { style: { color: sevColors[report.severity] || "#888" }, textContent: (report.severity || "").toUpperCase() }));
+  meta.appendChild(text(` · ${report.id} · ${new Date(report.created_at).toLocaleTimeString()}`));
+  if (report.vuln_class) meta.appendChild(el("span", { className: "tag", textContent: report.vuln_class }));
+  if (report.affected_asset) meta.appendChild(el("span", { className: "tag asset", textContent: report.affected_asset }));
   item.appendChild(meta);
 
-  // Quality bar
-  if (report.qualityScore !== undefined) {
-    const barFill = el("div", { className: "bar-fill", style: { width: `${qualityPct}%`, background: qualityColor } });
-    const qualityBar = el("div", { className: "quality-bar" }, [
+  if (qs > 0) {
+    const barFill = el("div", { className: "bar-fill", style: { width: `${qPct}%`, background: qColor } });
+    const barChildren = [
       el("span", { style: { fontSize: "11px", color: "var(--text-dim)" }, textContent: "Quality:" }),
       el("div", { className: "bar" }, [barFill]),
-      el("span", { className: "score", style: { color: qualityColor }, textContent: `${qualityScore}/10` }),
-    ]);
-    item.appendChild(qualityBar);
+      el("span", { className: "score", style: { color: qColor }, textContent: `${qs}/10` }),
+    ];
+    if (conf > 0) barChildren.push(el("span", { style: { fontSize: "11px", color: "var(--text-dim)", marginLeft: "8px" }, textContent: `conf: ${Math.round(conf * 100)}%` }));
+    item.appendChild(el("div", { className: "quality-bar" }, barChildren));
   }
 
-  // Reasoning
+  if (report.duplicate_of) {
+    item.appendChild(el("div", { className: "duplicate-flag", textContent: `Possible duplicate of ${report.duplicate_of} (score: ${report.duplicate_score})` }));
+  }
+
   if (report.reasoning) {
     item.appendChild(el("div", { className: "reasoning", textContent: report.reasoning }));
   }
 
-  // Payout info
-  if (report.status === "signed" || report.status === "paid") {
-    const referenceLabel = report.txHash ? "Tx" : "Authorization";
-    const referenceValue = report.txHash || report.authorizationId || report.signature || "pending";
-    const referenceText = referenceValue.length > 20 ? referenceValue.slice(0, 20) + "..." : referenceValue;
-    const payoutInfo = el("div", { className: "payout-info" }, [
+  if (report.status === "signed" || report.status === "confirmed" || report.status === "broadcasted") {
+    const ref = report.tx_hash || report.authorization_id || "pending";
+    const refLabel = report.tx_hash ? "Tx" : "Auth";
+    const refText = ref.length > 24 ? ref.slice(0, 24) + "..." : ref;
+    item.appendChild(el("div", { className: "payout-info" }, [
       el("span", { className: "payout-amount", textContent: `$${report.payout} USDC` }),
-      el("span", { className: "tx-hash", textContent: `${referenceLabel}: ${referenceText}` }),
-    ]);
-    item.appendChild(payoutInfo);
+      el("span", { className: "tx-hash", textContent: `${refLabel}: ${refText}` }),
+    ]));
+  }
+
+  if (report.status === "pending_review" || report.status === "probable_duplicate") {
+    item.appendChild(el("div", { className: "review-actions" }, [
+      el("span", { style: { fontSize: "11px", color: "var(--orange)" }, textContent: `Awaiting ${report.review_level || "manual"} review` }),
+    ]));
   }
 
   return item;
 }
 
-// Form submission
+function setFilter(filter) {
+  currentFilter = filter;
+  document.querySelectorAll(".filter-btn").forEach(btn => {
+    btn.classList.toggle("active", btn.dataset.filter === filter);
+  });
+  loadReports();
+}
+
 document.getElementById("reportForm").addEventListener("submit", async (e) => {
   e.preventDefault();
-  setFormMessage(null, "");
-
   const btn = document.getElementById("submitBtn");
+  const msgEl = document.getElementById("formMessage");
   btn.disabled = true;
   btn.querySelector(".btn-text").style.display = "none";
   btn.querySelector(".btn-loading").style.display = "inline";
+  msgEl.hidden = true;
 
   const data = {
     title: document.getElementById("bugTitle").value,
@@ -238,31 +204,28 @@ document.getElementById("reportForm").addEventListener("submit", async (e) => {
 
   try {
     const res = await fetch(`${API}/api/report/submit`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(data),
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data),
     });
-    const payload = await parseJsonResponse(res);
-
+    const json = await res.json();
     if (!res.ok) {
-      setFormMessage("error", payload?.error || payload?.reasoning || "Report submission failed.");
-      return;
+      msgEl.textContent = json.error || "Submission failed.";
+      msgEl.className = "form-message error";
+      msgEl.hidden = false;
+    } else {
+      document.getElementById("reportForm").reset();
+      document.querySelector('input[name="severity"][value="high"]').checked = true;
     }
-
-    setFormMessage("success", `Report submitted: ${payload?.id || "pending evaluation"}`);
-    document.getElementById("reportForm").reset();
-    document.querySelector('input[name="severity"][value="high"]').checked = true;
   } catch (err) {
-    console.error("Submit error:", err);
-    setFormMessage("error", "Network error while submitting the report.");
-  } finally {
-    btn.disabled = false;
-    btn.querySelector(".btn-text").style.display = "inline";
-    btn.querySelector(".btn-loading").style.display = "none";
+    msgEl.textContent = "Network error. Try again.";
+    msgEl.className = "form-message error";
+    msgEl.hidden = false;
   }
+
+  btn.disabled = false;
+  btn.querySelector(".btn-text").style.display = "inline";
+  btn.querySelector(".btn-loading").style.display = "none";
 });
 
-// Demo fill functions
 window.fillGoodReport = function () {
   document.getElementById("bugTitle").value = "SQL Injection in /api/users search endpoint";
   document.querySelector('input[name="severity"][value="critical"]').checked = true;
@@ -290,4 +253,5 @@ window.fillBadReport = function () {
   document.getElementById("reporterWallet").value = "0xDEADBEEF000000000000000000000000DeAdBeEf";
 };
 
+window.setFilter = setFilter;
 init();

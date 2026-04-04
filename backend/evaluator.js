@@ -1,118 +1,122 @@
-// Bug Report Evaluator
-// Uses pattern matching + scoring heuristics for automated evaluation
+// Bug Report Triage Engine
+// Scores reports on quality, validates severity, recommends payout, and assigns confidence.
+// Deterministic rules only — no LLM calls. Optional AI hooks can be added later.
 
-import crypto from "crypto";
+import { detectVulnClass, extractAffectedAsset } from "./lib/fingerprint.js";
 
-const SEVERITY_PAYOUTS = {
+const SEVERITY_RANGES = {
   critical: { min: 80, max: 150 },
   high:     { min: 40, max: 80 },
   medium:   { min: 15, max: 40 },
   low:      { min: 5, max: 15 },
 };
 
-const QUALITY_SIGNALS = {
-  positive: [
-    { pattern: /reproduce|steps to|how to trigger/i, weight: 2, label: "reproduction steps" },
-    { pattern: /impact|exploit|vulnerability|attack/i, weight: 2, label: "impact analysis" },
-    { pattern: /fix|patch|mitigation|recommendation/i, weight: 1.5, label: "suggested fix" },
-    { pattern: /version|commit|hash|line \d+/i, weight: 1, label: "version specificity" },
-    { pattern: /poc|proof of concept|payload/i, weight: 2.5, label: "proof of concept" },
-    { pattern: /overflow|injection|xss|csrf|ssrf|rce|idor/i, weight: 2, label: "known vulnerability class" },
-    { pattern: /authentication|authorization|privilege/i, weight: 1.5, label: "auth-related finding" },
-  ],
-  negative: [
-    { pattern: /\bmaybe\b|\bmight\b|could be|not sure/i, weight: -1, label: "uncertain language" },
-    { pattern: /\btest\b|\btesting\b|\bplaceholder\b/i, weight: -2, label: "test/placeholder content" },
-    { pattern: /^.{0,50}$/s, weight: -3, label: "too short" },
-  ],
-};
+// Quality signals scored independently
+const QUALITY_RULES = [
+  { id: "repro_steps",  pattern: /\breproduce\b|\bsteps to\b|\bhow to trigger\b/i, weight: 2, category: "quality" },
+  { id: "impact",       pattern: /\bimpact\b|\bexploit\b|\bvulnerability\b|\battack\b/i, weight: 2, category: "quality" },
+  { id: "fix_suggest",  pattern: /\bfix\b|\bpatch\b|\bmitigation\b|\brecommendation\b/i, weight: 1.5, category: "quality" },
+  { id: "version_spec", pattern: /\bversion\b|\bcommit\b|\bline \d+\b/i, weight: 1, category: "quality" },
+  { id: "poc",          pattern: /\bpoc\b|\bproof of concept\b|\bpayload\b/i, weight: 2.5, category: "quality" },
+  { id: "vuln_class",   pattern: /\boverflow\b|\binjection\b|\bxss\b|\bcsrf\b|\bssrf\b|\brce\b|\bidor\b/i, weight: 2, category: "quality" },
+  { id: "auth_finding", pattern: /\bauthentication\b|\bauthorization\b|\bprivilege\b/i, weight: 1.5, category: "quality" },
+];
 
-function hashReport(title, description) {
-  // Use null byte separator to prevent title/description boundary collisions (C-3)
-  const normalized = `${title}\0${description}`.toLowerCase().replace(/\s+/g, '');
-  return crypto.createHash("sha256").update(normalized).digest("hex");
-}
+const PENALTY_RULES = [
+  { id: "uncertain",    pattern: /\bmaybe\b|\bmight\b|\bcould be\b|\bnot sure\b/i, weight: -1, category: "penalty" },
+  { id: "test_content", pattern: /\btest\b|\btesting\b|\bplaceholder\b/i, weight: -2, category: "penalty" },
+  { id: "too_short",    pattern: /^.{0,50}$/s, weight: -3, category: "penalty" },
+];
 
-export function evaluateReport(report, {
-  hasSeenHash = () => false,
-  rememberHash = () => {},
-} = {}) {
+export function evaluateReport(report) {
   const { title, severity, description } = report;
   const fullText = `${title} ${description}`;
 
-  // Step 1: Duplicate check
-  const reportHash = hashReport(title, description);
-  if (hasSeenHash(reportHash)) {
-    return {
-      approved: false,
-      payout: 0,
-      severity,
-      qualityScore: 0,
-      reasoning: "DUPLICATE: This report matches a previously submitted finding. Duplicate reports are not eligible for bounty payouts.",
-      signals: ["duplicate detection triggered"],
-      evaluationTime: Date.now(),
-    };
-  }
-  rememberHash(reportHash);
+  // Step 1: Extract structured fields
+  const vulnClass = detectVulnClass(fullText);
+  const affectedAsset = extractAffectedAsset(fullText);
 
-  // Step 2: Quality scoring
-  let qualityScore = 5; // base score out of 10
-  const detectedSignals = [];
-  let hasPositiveSignal = false;
+  // Step 2: Score quality
+  let qualityScore = 5; // base
+  const signals = [];
+  let positiveCount = 0;
 
-  for (const signal of QUALITY_SIGNALS.positive) {
-    if (signal.pattern.test(fullText)) {
-      qualityScore += signal.weight;
-      detectedSignals.push(`✓ ${signal.label}`);
-      hasPositiveSignal = true;
+  for (const rule of QUALITY_RULES) {
+    if (rule.pattern.test(fullText)) {
+      qualityScore += rule.weight;
+      signals.push({ id: rule.id, matched: true, weight: rule.weight });
+      positiveCount++;
     }
   }
 
-  for (const signal of QUALITY_SIGNALS.negative) {
-    if (signal.pattern.test(fullText)) {
-      qualityScore += signal.weight; // negative weight
-      detectedSignals.push(`✗ ${signal.label}`);
+  for (const rule of PENALTY_RULES) {
+    if (rule.pattern.test(fullText)) {
+      qualityScore += rule.weight;
+      signals.push({ id: rule.id, matched: true, weight: rule.weight });
     }
   }
 
-  // Clamp score
   qualityScore = Math.max(0, Math.min(10, qualityScore));
 
-  // Step 3: Decision — require at least one positive signal AND score >= 4 (L-3)
-  const approved = qualityScore >= 4 && hasPositiveSignal;
-  const severityRange = SEVERITY_PAYOUTS[severity] || SEVERITY_PAYOUTS.low;
+  // Step 3: Calculate confidence
+  // Confidence is higher when we have more data points
+  const descLength = description.length;
+  const lengthFactor = Math.min(1, descLength / 500); // max at 500 chars
+  const signalFactor = Math.min(1, positiveCount / 4); // max at 4 positive signals
+  const vulnFactor = vulnClass ? 0.15 : 0;
+  const assetFactor = affectedAsset ? 0.1 : 0;
+  const confidence = Math.round((lengthFactor * 0.25 + signalFactor * 0.4 + vulnFactor + assetFactor + 0.1) * 100) / 100;
 
-  // Payout scales with quality score
+  // Step 4: Decision
+  const hasPositiveSignal = positiveCount > 0;
+  const approved = qualityScore >= 4 && hasPositiveSignal;
+  const needsManualReview = approved && confidence < 0.5;
+
+  // Step 5: Payout recommendation
+  const severityRange = SEVERITY_RANGES[severity] || SEVERITY_RANGES.low;
   const payoutMultiplier = qualityScore / 10;
-  const payout = approved
+  const recommendedPayout = approved
     ? Math.round(severityRange.min + (severityRange.max - severityRange.min) * payoutMultiplier)
     : 0;
 
-  // Step 4: Generate reasoning
+  // Step 6: Generate reasoning
+  const positiveSignals = signals.filter(s => s.weight > 0).map(s => s.id);
+  const negativeSignals = signals.filter(s => s.weight < 0).map(s => s.id);
+
   let reasoning;
   if (!approved) {
-    reasoning = `REJECTED: Quality score ${qualityScore.toFixed(1)}/10`;
+    reasoning = `REJECTED: Quality ${qualityScore.toFixed(1)}/10`;
     if (!hasPositiveSignal) {
-      reasoning += ` — no positive quality signals detected.`;
+      reasoning += " — no positive quality signals detected.";
     } else {
-      reasoning += ` is below the minimum threshold of 4.0.`;
+      reasoning += " is below threshold.";
     }
-    reasoning += ` The report lacks sufficient technical detail for a valid bug bounty submission. `;
-    reasoning += `Detected issues: ${detectedSignals.filter(s => s.startsWith('✗')).join(', ') || 'insufficient detail'}.`;
+    if (negativeSignals.length > 0) {
+      reasoning += ` Issues: ${negativeSignals.join(", ")}.`;
+    }
+  } else if (needsManualReview) {
+    reasoning = `NEEDS REVIEW: Quality ${qualityScore.toFixed(1)}/10, confidence ${(confidence * 100).toFixed(0)}% — insufficient data for auto-approval.`;
+    if (positiveSignals.length > 0) {
+      reasoning += ` Signals: ${positiveSignals.join(", ")}.`;
+    }
   } else {
-    reasoning = `APPROVED: Quality score ${qualityScore.toFixed(1)}/10. `;
-    reasoning += `Severity: ${severity.toUpperCase()}. `;
-    reasoning += `Positive signals: ${detectedSignals.filter(s => s.startsWith('✓')).join(', ')}. `;
-    reasoning += `Recommended payout: $${payout} USDC based on ${severity} severity and report quality.`;
+    reasoning = `APPROVED: Quality ${qualityScore.toFixed(1)}/10, confidence ${(confidence * 100).toFixed(0)}%.`;
+    reasoning += ` Severity: ${severity.toUpperCase()}.`;
+    reasoning += ` Signals: ${positiveSignals.join(", ")}.`;
+    reasoning += ` Payout: $${recommendedPayout} USDC.`;
   }
 
   return {
     approved,
-    payout,
-    severity,
+    needsManualReview,
+    recommendedPayout,
     qualityScore: Math.round(qualityScore * 10) / 10,
+    confidence,
+    severity,
+    vulnClass,
+    affectedAsset,
+    signals,
     reasoning,
-    signals: detectedSignals,
-    evaluationTime: Date.now(),
+    evaluatedAt: new Date().toISOString(),
   };
 }
