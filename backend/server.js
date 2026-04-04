@@ -42,7 +42,7 @@ const RATE_LIMIT = { maxRequests: 5, windowMs: 60_000 };
 
 // Stricter rate limiting for admin endpoints (brute-force protection)
 const adminRateLimiter = new Map();
-const ADMIN_RATE_LIMIT = { maxRequests: 3, windowMs: 60_000 };
+const ADMIN_RATE_LIMIT = { maxRequests: 20, windowMs: 60_000 };
 
 // SSE per-IP connection tracking (DoS protection)
 const ssePerIp = new Map();
