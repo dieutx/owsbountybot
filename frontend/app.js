@@ -117,6 +117,21 @@ const knownStates = new Map();
 
 async function loadReports(forceRebuild = false) {
   try {
+    if (currentFilter === "audit") {
+      const feed = document.getElementById("feed");
+      const res = await fetch(`${API}/api/audit`);
+      if (!res.ok) return;
+      const logs = await res.json();
+      feed.textContent = "";
+      knownStates.clear();
+      if (logs.length === 0) {
+        feed.appendChild(el("div", { className: "feed-empty" }, [el("p", { textContent: "No system audit logs found." })]));
+      } else {
+        logs.forEach(log => feed.appendChild(buildAuditItem(log)));
+      }
+      return;
+    }
+
     const url = currentFilter === "all" ? `${API}/api/reports`
       : currentFilter === "duplicates" ? `${API}/api/reports?duplicates=1`
       : `${API}/api/reports?status=${currentFilter}`;
@@ -181,6 +196,7 @@ function addFeedItem(report, prepend = true) {
   const feed = document.getElementById("feed");
   const empty = feed.querySelector(".feed-empty");
   if (empty) empty.remove();
+  if (currentFilter === "audit") return;
   if (currentFilter === "duplicates" && !report.duplicate_of) return;
   if (currentFilter !== "all" && currentFilter !== "duplicates" && report.status !== currentFilter) return;
   knownStates.set(report.id, report.status);
@@ -256,6 +272,28 @@ function buildFeedItem(report) {
     ]));
   }
 
+  return item;
+}
+
+function buildAuditItem(log) {
+  const item = el("div", { className: `feed-item system-log`, id: `audit-${log.id}` });
+  item.style.borderColor = "var(--accent)";
+  
+  item.appendChild(el("div", { className: "header" }, [
+    el("span", { className: "title", textContent: `System Event: ${log.action}` }),
+    el("span", { className: `status evaluating`, textContent: "AUDIT" }),
+  ]));
+
+  const meta = el("div", { className: "meta" });
+  meta.appendChild(text(`[${log.entity_type} ${log.entity_id}] · IP: ${log.ip_address} · ${new Date(log.created_at).toLocaleTimeString()}`));
+  if (log.actor) meta.appendChild(el("span", { className: "tag asset", textContent: `Actor: ${log.actor}` }));
+  item.appendChild(meta);
+
+  if (log.correlation_id) {
+    item.appendChild(el("div", { className: "payout-info" }, [
+      el("span", { className: "tx-hash", textContent: `Corr ID: ${log.correlation_id}` }),
+    ]));
+  }
   return item;
 }
 
